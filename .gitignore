@@ -1,0 +1,6 @@
+.vscode/
+client.o
+client
+server.o
+server
+libs/*/*.o
