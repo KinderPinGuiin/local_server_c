@@ -3,17 +3,7 @@
 #include <unistd.h>
 #include "libs/connection/connection.h"
 
-enum args {
-  PROG,
-  CMD,
-  NB_ARGS
-};
-
-int main(int argc, char **argv) {
-  if (argc < NB_ARGS) {
-    fprintf(stderr, "Syntaxe : %s \"command\"\n", argv[PROG]);
-    return EXIT_FAILURE;
-  }
+int main(void) {
   // Connexion à la file de requêtes
   server_queue *server_q = connect(SHM_NAME);
   if (server_q == NULL) {
@@ -30,16 +20,25 @@ int main(int argc, char **argv) {
     perror("Impossible d'envoyer une requête à la file de connexion ");
     return EXIT_FAILURE;
   }
-  // Une fois connecté envoie la requête à exécuter
-  if (send_request(request_pipe, argv[CMD]) < 0) {
-    perror("Impossible d'envoyer la requête");
-  }
-  char res_buffer[MAX_RESPONSE_LENGTH + 1];
-  // Ecoute la réponse du serveur
-  if (listen_response(response_pipe, res_buffer) < 0) {
-    perror("Impossible de recevoir la réponse du serveur ");
-  } else {
-    fprintf(stdout, "%s\n", res_buffer);
+  while (1) {
+    fprintf(stdout, "> ");
+    char s[MAX_COMMAND_LENGTH + 1];
+    if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
+      fprintf(stderr, "Erreur lors de la lecture de la commande\n");
+      exit(EXIT_FAILURE);
+    }
+    fprintf(stdout, "Commande : %s", s);
+    // Une fois connecté envoie la requête à exécuter
+    if (send_request(request_pipe, s) < 0) {
+      perror("Impossible d'envoyer la requête");
+    }
+    char res_buffer[MAX_RESPONSE_LENGTH + 1];
+    // Ecoute la réponse du serveur
+    if (listen_response(response_pipe, res_buffer) < 0) {
+      perror("Impossible de recevoir la réponse du serveur ");
+    } else {
+      fprintf(stdout, "%s\n", res_buffer);
+    }
   }
   // Libère les ressources en se déconnectant
   if (disconnect(server_q) < 0) {
