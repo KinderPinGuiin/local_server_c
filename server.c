@@ -134,64 +134,72 @@ void *handle_request(void *request) {
   int tube[2];
   if (pipe(tube) == -1) {
     perror("pipe ");
-    send_response(req->response_pipe, "Erreur lors de la liaison entre la " 
+    send_response(req->response_pipe, "Erreur lors de la liaison entre la "
         "commande et la réponse\n");
     return NULL;
   }
-  if (dup2(tube[1], STDOUT_FILENO) < 0) {
-    perror("dup2 ");
-    send_response(req->response_pipe, "Erreur lors de la liaison entre la " 
-        "commande et la réponse\n");
-    return NULL;
+  while (strcmp(req_buffer, "exit") != 0) {
+    if (dup2(tube[1], STDOUT_FILENO) < 0) {
+      perror("dup2 ");
+      send_response(req->response_pipe, "Erreur lors de la liaison entre la "
+          "commande et la réponse\n");
+      return NULL;
+    }
+    // On peut avoir au maximum strlen(buffer) tokens.
+    // On rajoute 1 afin de pouvoir ajouter le NULL.
+    char *tokens[strlen(req_buffer) + 1];
+    switch (fork()) {
+      case -1:
+        perror("fork ");
+        send_response(req->response_pipe, "Erreur lors de l'exécution de la "
+            "commande\n");
+        return NULL;
+      case 0:;
+        // Construction du tableau d'arguments
+        char *token;
+        char *req_buffer_p = req_buffer;
+        size_t i = 0;
+        while ((token = strtok_r(req_buffer_p, " ", &req_buffer_p))) {
+          tokens[i] = token;
+          ++i;
+        }
+        tokens[i] = NULL;
+        // Exécution de la commande
+        execvp(tokens[0], tokens);
+        send_response(req->response_pipe, "Erreur lors de l'exécution de la "
+            "commande\n");
+        return NULL;
+      default:;
+        // Lit ce qu'a écrit le programme sur la sortie standard et stock le
+        // résultat dans un buffer
+        ssize_t n;
+        char res_buffer[MAX_RESPONSE_LENGTH + 1];
+        if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
+          send_response(req->response_pipe, "Erreur lors de la liaison entre "
+              "la commande et la réponse\n");
+        }
+        res_buffer[n] = '\0';
+        // Attend la mort du processus enfant
+        wait(NULL);
+        // Envoie le contenu du buffer au client
+        if (send_response(req->response_pipe, res_buffer) < 0) {
+          perror("Impossible d'envoyer la réponse au client ");
+        }
+    }
+    if (listen_request(req->request_pipe, req_buffer) < 0) {
+      perror("Erreur lors de la lecture d'une requete ");
+      send_response(req->response_pipe, "Erreur lors de la récéption de la "
+          "requête\n");
+    }
   }
-  // On peut avoir au maximum strlen(buffer) tokens.
-  // On rajoute 1 afin de pouvoir ajouter le NULL.
-  char *tokens[strlen(req_buffer) + 1];
-  switch (fork()) {
-    case -1:
-      perror("fork ");
-      send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-          "commande\n");
-      return NULL;
-    case 0:;
-      // Construction du tableau d'arguments
-      char *token;
-      char *req_buffer_p = req_buffer;
-      size_t i = 0;
-      while ((token = strtok_r(req_buffer_p, " ", &req_buffer_p))) {
-        tokens[i] = token;
-        ++i;
-      }
-      tokens[i] = NULL;
-      // Exécution de la commande
-      execvp(tokens[0], tokens);
-      send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-          "commande\n");
-      return NULL;
-    default:;
-      // Lit ce qu'a écrit le programme sur la sortie standard et stock le
-      // résultat dans un buffer
-      ssize_t n;
-      char res_buffer[MAX_RESPONSE_LENGTH + 1];
-      if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
-        send_response(req->response_pipe, "Erreur lors de la liaison entre la "
-            "commande et la réponse\n");
-        goto free;
-      }
-      res_buffer[n] = '\0';
-      // Attend la mort du processus enfant
-      wait(NULL);
-      // Envoie le contenu du buffer au client
-      if (send_response(req->response_pipe, res_buffer) < 0) {
-        perror("Impossible d'envoyer la réponse au client ");
-      }
-free:
-      if (close(tube[0]) < 0) {
-        perror("Erreur lors de la fermeture du tube 0 ");
-      }
-      if (close(tube[1]) < 0) {
-        perror("Erreur lors de la fermeture du tube 1 ");
-      }
+  if (send_response(req->response_pipe, "Fin de transmission\n") < 0) {
+    perror("Impossible d'envoyer la réponse au client ");
+  }
+  if (close(tube[0]) < 0) {
+    perror("Erreur lors de la fermeture du tube 0 ");
+  }
+  if (close(tube[1]) < 0) {
+    perror("Erreur lors de la fermeture du tube 1 ");
   }
   // Libère les ressources allouées par la requête
   free(req);

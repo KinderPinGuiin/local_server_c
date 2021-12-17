@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include "libs/connection/connection.h"
 
 int main(void) {
@@ -20,14 +21,15 @@ int main(void) {
     perror("Impossible d'envoyer une requête à la file de connexion ");
     return EXIT_FAILURE;
   }
-  while (1) {
+  char s[MAX_COMMAND_LENGTH + 1];
+  do {
     fprintf(stdout, "> ");
-    char s[MAX_COMMAND_LENGTH + 1];
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
       exit(EXIT_FAILURE);
     }
-    fprintf(stdout, "Commande : %s", s);
+    // Enlève le \n à la fin de la commande
+    s[strlen(s) - 1] = '\0';
     // Une fois connecté envoie la requête à exécuter
     if (send_request(request_pipe, s) < 0) {
       perror("Impossible d'envoyer la requête");
@@ -39,7 +41,7 @@ int main(void) {
     } else {
       fprintf(stdout, "%s\n", res_buffer);
     }
-  }
+  } while (strcmp(s, "exit") != 0);
   // Libère les ressources en se déconnectant
   if (disconnect(server_q) < 0) {
     fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
