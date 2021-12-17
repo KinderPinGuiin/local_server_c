@@ -65,7 +65,7 @@ int main(void) {
     perror("Erreur lors de la création du masque des signaux bloqués ");
     return EXIT_FAILURE;
   }
-  // On associe l'action à SIGINT
+  // On associe l'action à différents signaux
   if (sigaction(SIGINT, &action, NULL) == -1) {
     perror("Erreur lors de l'association d'une action aux signaux ");
     return EXIT_FAILURE;
@@ -166,8 +166,8 @@ void *handle_request(void *request) {
         tokens[i] = NULL;
         // Exécution de la commande
         execvp(tokens[0], tokens);
-        send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-            "commande\n");
+        fprintf(stdout, "Erreur lors de l'exécution de la commande %s", 
+            req_buffer);
         return NULL;
       default:;
         // Lit ce qu'a écrit le programme sur la sortie standard et stock le
@@ -192,7 +192,7 @@ void *handle_request(void *request) {
           "requête\n");
     }
   }
-  if (send_response(req->response_pipe, "Fin de transmission\n") < 0) {
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
   if (close(tube[0]) < 0) {

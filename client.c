@@ -3,8 +3,25 @@
 #include <unistd.h>
 #include <string.h>
 #include "libs/connection/connection.h"
+#include "libs/commands/commands.h"
 
-int main(void) {
+enum {
+  PROG,
+  PRINT_HELP,
+  NB_ARGS
+};
+
+int main(int argc, char **argv) {
+  if (argc >= NB_ARGS) {
+    if (
+      strcmp(argv[PRINT_HELP], "--help") == 0 
+      || strcmp(argv[PRINT_HELP], "-h") == 0
+    ) {
+      // Affiche les commandes disponibles
+      print_commands();
+      return EXIT_SUCCESS;
+    }
+  }
   // Connexion à la file de requêtes
   server_queue *server_q = connect(SHM_NAME);
   if (server_q == NULL) {
