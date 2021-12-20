@@ -26,7 +26,8 @@ void print_commands();
  * Renvoie 1 si cmd est une commande valide et 0 sinon.
  * 
  * @param {char *} La commande.
- * @return {int} 1 si la commande est valide et 0 sinon.
+ * @return {int} Retourne l'identifiant de la commande si elle est valide et 
+ *               0 sinon. Un nombre négatif si cmd est égale à NULL.
  */
 int is_command_available(const char *cmd);
 
@@ -38,6 +39,5 @@ int is_command_available(const char *cmd);
  * @return {int} 1 en cas de succès et un nombre négatif en cas d'erreur.
  */
 int exec_cmd(const char *cmd);
-
 
 #endif
