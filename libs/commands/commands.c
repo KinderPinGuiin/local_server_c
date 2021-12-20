@@ -34,6 +34,23 @@ static const int TYPES[] = {
   CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
+/*
+ * Fonctions de traitement des commandes personnalisées.
+ */
+
+static int exec_info(const char *cmd);
+static int exec_ccp(const char *cmd);
+static int exec_lsl(const char *cmd);
+
+/**
+ * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
+ */
+static int (* FUNCTIONS[])(const char *) = {
+  NULL,
+  NULL, NULL, NULL, NULL,
+  exec_info, exec_ccp, exec_lsl
+};
+
 void print_commands() {
   fprintf(stdout,
     "Liste des commandes usuelles disponibles :\n"
@@ -101,8 +118,20 @@ int exec_cmd(const char *cmd) {
     }
   } else {
     // Execute la fonction correspondante à la commande personnalisée
-    fprintf(stdout, "En cours\n");
+    return FUNCTIONS[cmd_id](cmd);
   }
-  
+        
   return 1;
+}
+
+static int exec_info(const char *cmd) {
+  return fprintf(stdout, "Commande custom : %s\n", cmd);
+}
+
+static int exec_lsl(const char *cmd) {
+  return fprintf(stdout, "Commande custom : %s\n", cmd);
+}
+
+static int exec_ccp(const char *cmd) {
+  return fprintf(stdout, "Commande custom : %s\n", cmd);
 }
