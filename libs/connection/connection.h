@@ -20,7 +20,7 @@
 #define MAX_COMMAND_LENGTH 256
 
 // Taille maximale d'un message de réponse
-#define MAX_RESPONSE_LENGTH 4096
+#define MAX_RESPONSE_LENGTH 4000
 
 /*
  * Codes d'erreurs
@@ -114,35 +114,65 @@ int fetch_shm_request(server_queue *server_q, int (*apply)(shm_request *));
  * Manipulation de la requête à écrire sur le tube.
  */
 
-typedef struct request request;
+typedef struct request_fifo request_fifo;
 
 /**
- * Créé une requête qui sera envoyée au serveur après s'être connecté à 
- * celui-ci.
+ * Créé le réseau de requête de nom unique id et le renvoie
  * 
- * @param {char *} L'identifiant unique de la requête.
+ * @param {char *} Le nom unique du réseau à créer.
+ * @return {request_fifo *} Un pointeur vers la requête ou NULL en cas 
+ *                          d'erreur. L'erreur peut être consultée via 
+ *                          perror.
+ */
+request_fifo *init_request_fifo(const char *id);
+
+/**
+ * Créé une requête contenant la commande cmd, qui sera envoyée sur le réseau
+ * de requête req.
+ * 
+ * @param {request_fifo *} Le réseau de requête.
  * @param {char *} La commande que doit éxecuter le serveur.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int send_request(const char *id, const char *cmd);
+int send_request(request_fifo *req_fifo, const char *cmd);
 
 /**
  * Ecoute la requête envoyée par le client et stock la commande à exécuter dans
  * buffer.
  * 
- * @param {char *} L'identifiant unique de la requête à écouter.
+ * @param {char *} L'identifiant du réseau de requêtes.
  * @param {char *} Une chaîne où stocker la commande à exécuter.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
 int listen_request(const char *id, char *buffer);
 
+/**
+ * Ferme la file de requêtes associée à *req. Renvoie 1 en cas de succès
+ * et un nombre négatif en cas d'échec. L'erreur peut être consultée via 
+ * perror.
+ *
+ * @param {request_fifo *} Le réseau à fermer.
+ * @return {int} 1 en cas de succès et un nombre négatif en cas d'échec.
+ */
+int close_request_fifo(request_fifo *req);
+
 /*
  * Manipulation de la réponse à écrire sur le tube.
  */
 
-typedef struct response response;
+typedef struct response_fifo response_fifo;
+
+/**
+ * Créé le tube de réponse de nom unique id et le renvoie.
+ * 
+ * @param {char *} Le nom unique du tube à créer.
+ * @return {response_fifo *} Un pointeur vers la file de réponse ou NULL en cas
+ *                           d'erreur. L'erreur peut être consultée via 
+ *                           perror.
+ */
+response_fifo *init_response_fifo(const char *id);
 
 /**
  * Créé une réponse qui sera envoyée au client après avoir établit le lien
@@ -163,6 +193,16 @@ int send_response(const char *id, const char *msg);
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int listen_response(const char *id, char *buffer);
+int listen_response(response_fifo *res_fifo, char *buffer);
+
+/**
+ * Ferme la file de réponse associée à *req. Renvoie 1 en cas de succès
+ * et un nombre négatif en cas d'échec. L'erreur peut être consultée via 
+ * perror.
+ *
+ * @param {response_fifo *} La file à fermer.
+ * @return {int} 1 en cas de succès et un nombre négatif en cas d'échec.
+ */
+int close_response_fifo(response_fifo *res);
 
 #endif

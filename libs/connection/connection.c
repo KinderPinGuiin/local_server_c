@@ -96,6 +96,8 @@ server_queue *connect(const char *shm_name) {
     if (close(shm_fd) < 0) {
       return NULL;
     }
+
+    return NULL;
   }
   // Ferme le descripteur car il ne sera plus utile après
   if (close(shm_fd) < 0) {
@@ -152,10 +154,6 @@ int send_shm_request(server_queue *server_q, const char request_pipe_name[],
     const char response_pipe_name[]) {
   if (server_q == NULL) {
     return INVALID_POINTER;
-  }
-  // Si le serveur est plein on annule la requête
-  if (server_q->length == MAX_SLOT) {
-    return SERVER_IS_FULL;
   }
   // Attend au cas où la file soit en train d'être modifiée.
   if (sem_wait(&server_q->empty) == -1) {
@@ -218,35 +216,45 @@ int fetch_shm_request(server_queue *server_q, int (*apply)(shm_request *)) {
  * Manipulation de la requête à écrire sur le tube.
  */
 
-struct request {
-  char cmd[MAX_COMMAND_LENGTH + 1]; 
+struct request_fifo {
+  char id[NAME_MAX + 1];
 };
 
-int send_request(const char *id, const char *cmd) {
-  if (id == NULL || cmd == NULL) {
-    return INVALID_POINTER;
+typedef struct request {
+  char cmd[MAX_COMMAND_LENGTH + 1];
+} request;
+
+request_fifo *init_request_fifo(const char *id) {
+  request_fifo *req = malloc(sizeof *req);
+  if (req == NULL) {
+    return NULL;
   }
-  // Créé le tube s'il n'existe pas déjà et ignore l'erreur si le 
-  // fichier existe
+  // Créé le tube
   if (mkfifo(id, S_IRUSR | S_IWUSR) < 0) {
-    if (errno != EEXIST) {
-      return PIPE_ERROR;
-    }
-    errno = 0;
+    return NULL;
   }
-  // Ouvre le tube en écriture
-  int pipe_fd;
-  if ((pipe_fd = open(id, O_WRONLY)) < 0) {
-    return PIPE_ERROR;
+  strncpy(req->id, id, NAME_MAX);
+
+  return req;
+}
+
+int send_request(request_fifo *req_fifo, const char *cmd) {
+  if (req_fifo == NULL || cmd == NULL) {
+    return INVALID_POINTER;
   }
   // Créé la requête
   request req = { .cmd = "" };
   strncpy(req.cmd, cmd, MAX_COMMAND_LENGTH);
-  // Envoie la requête
-  if (write(pipe_fd, &req, sizeof(request)) < 0) {
-    perror("write ");
+  // Ouvre le tube du réseau
+  int pipe_fd;
+  if ((pipe_fd = open(req_fifo->id, O_WRONLY)) < 0) {
     return PIPE_ERROR;
   }
+  // Envoie la requête
+  if (write(pipe_fd, &req, sizeof(request)) < 0) {
+    return PIPE_ERROR;
+  }
+  // Ferme le tube
   if (close(pipe_fd) < 0) {
     return PIPE_ERROR;
   }
@@ -258,15 +266,7 @@ int listen_request(const char *id, char *buffer) {
   if (id == NULL || buffer == NULL) {
     return INVALID_POINTER;
   }
-  // Créé le tube s'il n'existe pas déjà et ignore l'erreur si le 
-  // fichier existe
-  if (mkfifo(id, S_IRUSR | S_IWUSR) < 0) {
-    if (errno != EEXIST) {
-      return PIPE_ERROR;
-    }
-    errno = 0;
-  }
-  // Ouvre le tube de requête
+  // Ouvre le tube
   int pipe_fd;
   if ((pipe_fd = open(id, O_RDONLY)) < 0) {
     return PIPE_ERROR;
@@ -279,14 +279,20 @@ int listen_request(const char *id, char *buffer) {
   }
   // Copie la commande à éxecuter dans le buffer
   strncpy(buffer, req.cmd, MAX_COMMAND_LENGTH + 1);
-  // Ferme et supprime le tube
+  // Ferme le tube
   if (close(pipe_fd) < 0) {
     return PIPE_ERROR;
   }
-  if (unlink(id) < 0) {
+  
+  return 1;
+}
+
+int close_request_fifo(request_fifo *req) {
+  if (unlink(req->id) < 0) {
     return PIPE_ERROR;
   }
-  
+  free(req);
+
   return 1;
 }
 
@@ -294,21 +300,31 @@ int listen_request(const char *id, char *buffer) {
  * Manipulation de la réponse à écrire sur le tube.
  */
 
-struct response {
-  char msg[MAX_RESPONSE_LENGTH + 1];
+struct response_fifo {
+  char id[NAME_MAX + 1];
 };
+
+typedef struct response {
+  char msg[MAX_RESPONSE_LENGTH + 1];
+} response;
+
+response_fifo *init_response_fifo(const char *id) {
+  response_fifo *res = malloc(sizeof *res);
+  if (res == NULL) {
+    return NULL;
+  }
+  // Créé le tube
+  if (mkfifo(id, S_IRUSR | S_IWUSR) < 0) {
+    return NULL;
+  }
+  strncpy(res->id, id, NAME_MAX);
+
+  return res;
+}
 
 int send_response(const char *id, const char *msg) {
   if (id == NULL || msg == NULL) {
     return INVALID_POINTER;
-  }
-  // Créé le tube s'il n'existe pas déjà et ignore l'erreur si le 
-  // fichier existe
-  if (mkfifo(id, S_IRUSR | S_IWUSR) < 0) {
-    if (errno != EEXIST) {
-      return PIPE_ERROR;
-    }
-    errno = 0;
   }
   // Ouvre le tube en écriture
   int pipe_fd;
@@ -319,7 +335,8 @@ int send_response(const char *id, const char *msg) {
   response res = { .msg = "" };
   strncpy(res.msg, msg, MAX_RESPONSE_LENGTH);
   // Envoie la réponse
-  if (write(pipe_fd, &res, sizeof(response)) < 0) {
+  ssize_t n;
+  if ((n = write(pipe_fd, &res, sizeof(response))) < 0) { // SIGPIPE
     perror("write ");
     return PIPE_ERROR;
   }
@@ -330,21 +347,13 @@ int send_response(const char *id, const char *msg) {
   return 1;
 }
 
-int listen_response(const char *id, char *buffer) {
-  if (id == NULL || buffer == NULL) {
+int listen_response(response_fifo *res_fifo, char *buffer) {
+  if (res_fifo == NULL || buffer == NULL) {
     return INVALID_POINTER;
-  }
-  // Créé le tube s'il n'existe pas déjà et ignore l'erreur si le 
-  // fichier existe
-  if (mkfifo(id, S_IRUSR | S_IWUSR) < 0) {
-    if (errno != EEXIST) {
-      return PIPE_ERROR;
-    }
-    errno = 0;
   }
   // Ouvre le tube de réponse
   int pipe_fd;
-  if ((pipe_fd = open(id, O_RDONLY)) < 0) {
+  if ((pipe_fd = open(res_fifo->id, O_RDONLY)) < 0) {
     return PIPE_ERROR;
   }
   // Lit la réponse
@@ -359,9 +368,15 @@ int listen_response(const char *id, char *buffer) {
   if (close(pipe_fd) < 0) {
     return PIPE_ERROR;
   }
-  if (unlink(id) < 0) {
+
+  return 1;
+}
+
+int close_response_fifo(response_fifo *res) {
+  if (unlink(res->id) < 0) {
     return PIPE_ERROR;
   }
+  free(res);
 
   return 1;
 }
