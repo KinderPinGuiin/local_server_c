@@ -14,6 +14,7 @@
  */
 #define INVALID_COMMAND -1
 #define EXEC_ERROR -2
+#define INVALID_POINTER_COMMANDS -3
 
 /**
  * Affiche sur la sortie standard la liste des commandes pouvant être exécutées

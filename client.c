@@ -61,6 +61,11 @@ int main(int argc, char **argv) {
     }
     // Enlève le \n à la fin de la commande
     s[strlen(s) - 1] = '\0';
+    // Si la commande est invalide on affiche une erreur
+    if (!is_command_available(s)) {
+      fprintf(stderr, "Commande invalide : %s\n", s);
+      continue;
+    }
     // Une fois connecté envoie la requête à exécuter
     if (send_request(req_fifo, s) < 0) {
       perror("Impossible d'envoyer la requête");
