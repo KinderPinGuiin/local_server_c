@@ -38,14 +38,14 @@ static const int TYPES[] = {
  * Fonctions de traitement des commandes personnalisées.
  */
 
-static int exec_info(const char **argv);
-static int exec_ccp(const char **argv);
-static int exec_lsl(const char **argv);
+static int exec_info(size_t argc, const char **argv);
+static int exec_ccp(size_t argc, const char **argv);
+static int exec_lsl(size_t argc, const char **argv);
 
 /**
  * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
  */
-static int (* FUNCTIONS[])(const char **) = {
+static int (* FUNCTIONS[])(size_t, const char **) = {
   NULL,
   NULL, NULL, NULL, NULL,
   exec_info, exec_ccp, exec_lsl
@@ -118,20 +118,101 @@ int exec_cmd(const char *cmd) {
     }
   } else {
     // Execute la fonction correspondante à la commande personnalisée
-    return FUNCTIONS[cmd_id]((const char **) tokens);
+    return FUNCTIONS[cmd_id](i, (const char **) tokens);
   }
         
   return 1;
 }
 
-static int exec_info(const char **argv) {
-  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
+#define LINE_MAX_LENGTH 255
+
+static int exec_info(size_t argc, const char **argv) {
+  if (argc < 2) {
+    fprintf(stdout, "Usage : info <PID>\n");
+    return EXEC_ERROR;
+  }
+  const char *pid = argv[1];
+	fprintf(stdout, "----- Caractéristiques du programme %s -----\n", pid);
+
+	/*
+	 * cmdline
+	 */
+	
+	// Créé le nom de fichier à trouver pour cmdline
+	char *str = malloc(sizeof("/proc//cmdline") + strlen(pid) * sizeof(char));
+	if (str == NULL) {
+		fprintf(stdout, "Pas assez d'espace mémoire\n");
+		return EXEC_ERROR;
+	}
+	sprintf(str, "/proc/%s/cmdline", pid);
+	// Lit le fichier
+	FILE *cmd = fopen(str, "r");
+	if (cmd == NULL) {
+		free(str);
+		fprintf(stdout, "Impossible d'ouvrir le fichier cmdline\n");
+		return EXEC_ERROR;
+	}
+	char line[LINE_MAX_LENGTH + 1];
+	if (fgets(line, LINE_MAX_LENGTH, cmd) == NULL) {
+    fprintf(stdout, 
+        "Une erreur est survenue lors de la lecture du fichier\n");
+  }
+	if (line == NULL) {
+		free(str);
+		fprintf(stdout, "Impossible de lire le fichier cmdline\n");
+		return EXEC_ERROR;
+	}
+	// Affiche la commande ayant executé le fichier
+	fprintf(stdout, "[%s] Command : %s\n", pid, line);
+	fclose(cmd);
+	free(str);
+	
+	/*
+	 * status
+	 */
+	str = malloc(sizeof("/proc//status") + strlen(pid) * sizeof(char));
+	if (str == NULL) {
+		fprintf(stdout, "Pas assez d'espace mémoire\n");
+		return EXEC_ERROR;
+	}
+	sprintf(str, "/proc/%s/status", pid);
+	FILE *status = fopen(str, "r");
+	if (status == NULL) {
+		free(str);
+		fprintf(stdout, "Impossible d'ouvrir le fichier status\n");
+		return EXEC_ERROR;
+	}
+	for (size_t i = 0; i < 7; ++i) {
+		if (fgets(line, LINE_MAX_LENGTH, status) == NULL) {
+      fprintf(stdout, 
+          "Une erreur est survenue lors de la lecture du fichier\n");
+    }
+		if (line == NULL) {
+			free(str);
+			fclose(status);
+			fprintf(stdout, "Impossible de lire le fichier status\n");
+			return EXEC_ERROR;
+		}
+		switch(i) {
+			case 2:
+			case 3:
+			case 6:
+				fprintf(stdout, "[%s] %s", pid, line);
+				break;
+			default:
+				break;
+		}
+	}
+	free(str);
+	fclose(status);
+
+  return 1;
 }
 
-static int exec_lsl(const char **argv) {
-  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
+static int exec_lsl(size_t argc, const char **argv) {
+  return fprintf(stdout, "Commande custom : %zu %s\n", argc,  argv[0]);
 }
 
-static int exec_ccp(const char **argv) {
-  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
+static int exec_ccp(size_t argc, const char **argv) {
+  return fprintf(stdout, "Commande custom : %zu %s\n", argc, argv[0]);
 }
