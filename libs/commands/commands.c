@@ -38,14 +38,14 @@ static const int TYPES[] = {
  * Fonctions de traitement des commandes personnalisées.
  */
 
-static int exec_info(const char *cmd);
-static int exec_ccp(const char *cmd);
-static int exec_lsl(const char *cmd);
+static int exec_info(const char **argv);
+static int exec_ccp(const char **argv);
+static int exec_lsl(const char **argv);
 
 /**
  * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
  */
-static int (* FUNCTIONS[])(const char *) = {
+static int (* FUNCTIONS[])(const char **) = {
   NULL,
   NULL, NULL, NULL, NULL,
   exec_info, exec_ccp, exec_lsl
@@ -93,24 +93,24 @@ int exec_cmd(const char *cmd) {
   if (!(cmd_id = is_command_available(cmd))) {
     return INVALID_COMMAND;
   }
+  // Construit le tableau des arguments de la commande 
+  char cmd_cpy[strlen(cmd) + 1];
+  strcpy(cmd_cpy, cmd);
+  char *cmd_p = cmd_cpy;
+  char *tokens[strlen(cmd) + 1];
+  char *token;
+  size_t i = 0;
+  while ((token = strtok_r(cmd_p, " ", &cmd_p))) {
+    tokens[i] = token;
+    ++i;
+  }
+  tokens[i] = NULL;
   if (TYPES[cmd_id] == USUAL_CMD) {
     // Utilise execvp en cas de commande usuelle
-    char cmd_cpy[strlen(cmd) + 1];
-    strcpy(cmd_cpy, cmd);
-    char *cmd_p = cmd_cpy;
-    char *tokens[strlen(cmd) + 1];
-    char *token;
-    size_t i = 0;
     switch (fork()) {
       case -1:
         return EXEC_ERROR;
       case 0:
-        // Construit le tableau pour execvp
-        while ((token = strtok_r(cmd_p, " ", &cmd_p))) {
-          tokens[i] = token;
-          ++i;
-        }
-        tokens[i] = NULL;
         execvp(tokens[0], tokens);
         return EXEC_ERROR;
       case 1:
@@ -118,20 +118,20 @@ int exec_cmd(const char *cmd) {
     }
   } else {
     // Execute la fonction correspondante à la commande personnalisée
-    return FUNCTIONS[cmd_id](cmd);
+    return FUNCTIONS[cmd_id]((const char **) tokens);
   }
         
   return 1;
 }
 
-static int exec_info(const char *cmd) {
-  return fprintf(stdout, "Commande custom : %s\n", cmd);
+static int exec_info(const char **argv) {
+  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
 }
 
-static int exec_lsl(const char *cmd) {
-  return fprintf(stdout, "Commande custom : %s\n", cmd);
+static int exec_lsl(const char **argv) {
+  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
 }
 
-static int exec_ccp(const char *cmd) {
-  return fprintf(stdout, "Commande custom : %s\n", cmd);
+static int exec_ccp(const char **argv) {
+  return fprintf(stdout, "Commande custom : %s\n", argv[0]);
 }
