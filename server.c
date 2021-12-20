@@ -9,6 +9,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "libs/connection/connection.h"
+#include "libs/commands/commands.h"
 
 /*
  * Codes d'erreur
@@ -151,14 +152,8 @@ void *handle_request(void *request) {
     }
     // On peut avoir au maximum strlen(buffer) tokens.
     // On rajoute 1 afin de pouvoir ajouter le NULL.
-    // Variable père
-    char *tokens[strlen(req_buffer) + 1];
     ssize_t n;
     char res_buffer[MAX_RESPONSE_LENGTH + 1];
-    // Variable fils
-    char *token;
-    char *req_buffer_p = req_buffer;
-    size_t i = 0;
     switch (fork()) {
       case -1:
         perror("fork ");
@@ -167,20 +162,12 @@ void *handle_request(void *request) {
         return NULL;
       case 0:
         if (close(tube[0]) < 0) {
-          send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-            "commande\n");
+          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
           return NULL;
         }
-        // Construction du tableau d'arguments
-        while ((token = strtok_r(req_buffer_p, " ", &req_buffer_p))) {
-          tokens[i] = token;
-          ++i;
+        if (exec_cmd(req_buffer) < 0) {
+          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
         }
-        tokens[i] = NULL;
-        // Exécution de la commande
-        execvp(tokens[0], tokens);
-        send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-            "commande\n");
         return NULL;
       default:
         // Lit ce qu'a écrit le programme sur la sortie standard et stock le
