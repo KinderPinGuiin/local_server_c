@@ -90,6 +90,9 @@ int is_command_available(const char *cmd) {
   char cmd_cpy[strlen(cmd) + 1];
   strcpy(cmd_cpy, cmd);
   char *prefix = strtok(cmd_cpy, " ");
+  if (prefix == NULL) {
+    return 0;
+  }
   // On cherche si ce préfixe est valide
   for (size_t i = 1; i < sizeof(COMMANDS) / sizeof(char *); ++i) {
     if (strcmp(prefix, COMMANDS[i]) == 0) {
@@ -307,12 +310,12 @@ static int exec_lsl(size_t argc, const char **argv) {
       strcpy(fullname, (argc > 1) ? dir_path : "");
       strncat(fullname, entry->d_name, PATH_MAX + 1);
       if (strlen(fullname) > PATH_MAX + 1) {
-        fprintf(stderr, "Erreur : Chemin invalide\n");
+        fprintf(stdout, "Erreur : Chemin invalide\n");
         r = EXEC_ERROR;
         goto close;
       }
       if (print_file_info(fullname) == FILE_NOT_FOUND) {
-        fprintf(stderr, "Erreur : Fichier innatendu %s\n", fullname);
+        fprintf(stdout, "Erreur : Fichier innatendu %s\n", fullname);
         r = EXEC_ERROR;
         goto close;
       }
@@ -339,7 +342,7 @@ static int print_file_info(const char *filepath) {
   }
   char mode_str[MODE_STR_LENGTH + 1];
   if (strmode(stats.st_mode, mode_str, MODE_STR_LENGTH + 1) != 0) {
-    fprintf(stderr, "Warning : Mode tronqué\n");
+    fprintf(stdout, "Warning : Mode tronqué\n");
   }
   // Infos utilisateur et groupe
   struct passwd *user_info = getpwuid(stats.st_uid);
@@ -351,7 +354,7 @@ static int print_file_info(const char *filepath) {
     "%b.  %d %R", gmtime(&stats.st_mtim.tv_sec)
   );
   if (modif_writed == 0) {
-    fprintf(stderr, "Erreur : Impossible d'écrire la date de dernière "
+    fprintf(stdout, "Erreur : Impossible d'écrire la date de dernière "
         "modification\n");
     return PRINT_ERROR;
   }
