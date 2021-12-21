@@ -139,7 +139,7 @@ int exec_cmd(const char *cmd) {
 // ---------- Commande : help ----------
 
 static int exec_help(size_t argc, const char **argv) {
-  if (argc && argv[0]) {}
+  if (argc && argv[0]) { /* Enlève le warn */ }
   print_commands();
   return 1;
 }
