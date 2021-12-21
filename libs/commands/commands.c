@@ -33,7 +33,7 @@ static const char *COMMANDS[] = {
   // Commandes usuelles
   "ls", "ps", "pwd", "exit",
   // Commandes personnalisées
-  "info", "ccp", "lsl"
+  "help", "info", "ccp", "lsl"
 };
 
 /**
@@ -42,13 +42,14 @@ static const char *COMMANDS[] = {
 static const int TYPES[] = {
   INVALID_CMD,
   USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
-  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
+  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
 /*
  * Fonctions de traitement des commandes personnalisées.
  */
 
+static int exec_help(size_t argc, const char **argv);
 static int exec_info(size_t argc, const char **argv);
 static int exec_ccp(size_t argc, const char **argv);
 static int exec_lsl(size_t argc, const char **argv);
@@ -59,7 +60,7 @@ static int exec_lsl(size_t argc, const char **argv);
 static int (* FUNCTIONS[])(size_t, const char **) = {
   NULL,
   NULL, NULL, NULL, NULL,
-  exec_info, exec_ccp, exec_lsl
+  exec_help, exec_info, exec_ccp, exec_lsl
 };
 
 void print_commands() {
@@ -77,7 +78,7 @@ void print_commands() {
       "dans le fichier dest. -v permet de vérifier si le fichier existe déjà, "
       "-a permet de copier en mode ajout, -b et -e permettent respectivement "
       "de définir un offset de début et de fin.\n"
-    "    - \033[0;36mlsl\033[0m : Commande raccourcie de ls -li.\n"
+    "    - \033[0;36mlsl\033[0m : Commande raccourcie de ls -ali.\n"
   );
 }
 
@@ -132,6 +133,14 @@ int exec_cmd(const char *cmd) {
     return FUNCTIONS[cmd_id](i, (const char **) tokens);
   }
         
+  return 1;
+}
+
+// ---------- Commande : help ----------
+
+static int exec_help(size_t argc, const char **argv) {
+  if (argc && argv[0]) {}
+  print_commands();
   return 1;
 }
 
