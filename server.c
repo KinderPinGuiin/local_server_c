@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
+#include "libs/list/list.h"
 
 /*
  * Codes d'erreur
