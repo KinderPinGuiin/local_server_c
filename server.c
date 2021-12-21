@@ -199,7 +199,6 @@ void *handle_request(void *request) {
           "requête\n");
     }
   }
-  fprintf(stderr, "Fin du thread\n");
   if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
