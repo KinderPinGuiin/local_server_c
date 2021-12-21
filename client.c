@@ -6,6 +6,9 @@
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
 
+/**
+ * Arguments possible du programme client.
+ */
 enum {
   PROG,
   PRINT_HELP,
