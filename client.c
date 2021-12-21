@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <signal.h>
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
 
@@ -10,6 +11,20 @@ enum {
   PRINT_HELP,
   NB_ARGS
 };
+
+/**
+ * Libère les ressources du client et le déconnecte en cas d'interruption par
+ * un signal.
+ */
+void sig_disconnect(int signum);
+
+/*
+ * Variables globales nécessaires au signaux.
+ */
+
+request_fifo *req_fifo;
+response_fifo *res_fifo;
+server_queue *server_q;
 
 int main(int argc, char **argv) {
   if (argc >= NB_ARGS) {
@@ -22,8 +37,29 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     }
   }
+  // Gestion des signaux
+  struct sigaction action;
+  action.sa_handler = sig_disconnect;
+  action.sa_flags = 0;
+  if (sigfillset(&action.sa_mask) == -1) {
+    perror("Erreur lors de la création du masque des signaux bloqués ");
+    return EXIT_FAILURE;
+  }
+  // On associe l'action à différents signaux
+  if (sigaction(SIGINT, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
+  if (sigaction(SIGQUIT, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
+  if (sigaction(SIGTERM, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
   // Connexion à la file de requêtes
-  server_queue *server_q = connect(SHM_NAME);
+  server_q = connect(SHM_NAME);
   if (server_q == NULL) {
     perror("Impossible d'établir un lien avec la file de connexion ");
     return EXIT_FAILURE;
@@ -34,13 +70,11 @@ int main(int argc, char **argv) {
   char response_pipe[NAME_MAX + 1];
   sprintf(response_pipe, "./tmp/pipe_reponse_%ld", (long) getpid());
   // Création de la pipe de requête
-  request_fifo *req_fifo;
   if ((req_fifo = init_request_fifo(request_pipe)) == NULL) {
     perror("Impossible d'initialiser le réseau de requête ");
     return EXIT_FAILURE;
   }
   // Création de la pipe de réponse
-  response_fifo *res_fifo;
   if ((res_fifo = init_response_fifo(response_pipe)) == NULL) {
     perror("Impossible d'initialiser le réseau de requête ");
     return EXIT_FAILURE;
@@ -57,6 +91,13 @@ int main(int argc, char **argv) {
     fprintf(stdout, "> ");
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
+      if (send_request(req_fifo, "exit") < 0 
+          || listen_response(res_fifo, s) < 0) {
+        fprintf(stderr, "Impossible d'échanger une requête de fin de "
+            "transmission avec le serveur");
+      } else {
+        fprintf(stdout, "%s\n", s);
+      }
       r = EXIT_FAILURE;
       goto free;
     }
@@ -99,4 +140,39 @@ free:
   }
 
   return r;
+}
+
+void sig_disconnect(int signum) {
+  int r = EXIT_SUCCESS;  
+  if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
+    fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
+    if (send_request(req_fifo, "exit") < 0) {
+      fprintf(stderr, "Impossible de transmettre une dernière requête "
+          "de terminaison au serveur");
+      r = EXIT_FAILURE;
+    }
+    char s[MAX_RESPONSE_LENGTH + 1];
+    if (send_request(req_fifo, "exit") < 0 
+        || listen_response(res_fifo, s) < 0) {
+      fprintf(stderr, "Impossible d'échanger une requête de fin de "
+          "transmission avec le serveur");
+      r = EXIT_FAILURE;
+    } else {
+      fprintf(stdout, "%s\n", s);
+    }
+    if (disconnect(server_q) < 0) {
+      fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
+      r = EXIT_FAILURE;
+    }
+    if (close_request_fifo(req_fifo) < 0) {
+      perror("Impossible de fermer la pipe de requête ");
+      r = EXIT_FAILURE;
+    }
+    if (close_response_fifo(res_fifo) < 0) {
+      perror("Impossible de fermer la pipe de réponse ");
+      r = EXIT_FAILURE;
+    }
+  }
+
+  exit(r);
 }
