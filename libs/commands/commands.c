@@ -1,9 +1,20 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <pwd.h>
+#include <grp.h>
+#include <time.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <linux/limits.h>
 #include "commands.h"
 
 /**
@@ -124,6 +135,8 @@ int exec_cmd(const char *cmd) {
   return 1;
 }
 
+// ---------- Commande : info ----------
+
 #define LINE_MAX_LENGTH 255
 
 static int exec_info(size_t argc, const char **argv) {
@@ -209,9 +222,220 @@ static int exec_info(size_t argc, const char **argv) {
   return 1;
 }
 
+// ---------- Commande : lsl ----------
+
+// Macro utilisée dans la fonction print_file_info.
+#define FILE_NOT_FOUND -1
+
+// Macro utilisée dans la fonction print_file_info
+#define PRINT_ERROR -2
+
+// Taille de la chaine des droits obtenu par strmode.
+#define MODE_STR_LENGTH 10
+
+// Nombre de types de fichiers différents. Utilisé par strmode. 
+#define NB_FILE_TYPES 7
+
+// Nombre maximum de caractères pour la date de modification.
+#define MAX_MODIF_STR_SIZE 50
+
+// Taille d'un code couleur dans le terminal. Utilisé dans get_color.
+#define COLOR_SIZE 9
+
+/*
+ * Ecrit les informations d'un fichier sur la sortie standard. La liste de ses
+ * informations est donnée sur la question 1 du TP6. Renvoie 0 si tout
+ * se passe bien et FILE_NOT_FOUND si le fichier est introuvable.
+ */
+static int print_file_info(const char *filepath);
+
+/*
+ * Ecrit la représentation textuelle du mode dans buffer. Ecrit au maximum
+ * n caractères. Renvoie 0 en cas de succès, 1 si la totalité du mode n'a pas pu
+ * être écrite. Renvoie -1 si n < 1.
+ */
+static int strmode(mode_t mode, char *buffer, size_t n);
+
+/*
+ * Met la couleur à utiliser pour le fichier de type t dans la chaine buffer
+ * de longueur n. Ne remplit pas la chaine si il n'y a pas assez d'espace.
+ */
+static void get_color(char *buffer, size_t n, char t);
+
 static int exec_lsl(size_t argc, const char **argv) {
-  return fprintf(stdout, "Commande custom : %zu %s\n", argc,  argv[0]);
+  char dir_path[PATH_MAX + 1];
+  // Détermine le dossier sur lequel éxecuter 
+  if (argc == 1) {
+    strncpy(dir_path, ".", PATH_MAX);
+  } else {
+    if (argv[1][strlen(argv[1]) - 1] == '/') {
+      strncpy(dir_path, argv[1], PATH_MAX + 1);
+    } else {
+      strncpy(dir_path, argv[1], PATH_MAX);
+      strcat(dir_path, "/");
+      // Vérifie que le dossier n'ai pas été tronqué
+      if (dir_path[PATH_MAX] != '\0') {
+        fprintf(stdout, "Erreur : Le chemin spécifié est trop long\n");
+        return EXEC_ERROR;
+      }
+    }
+  }
+  DIR *dir = opendir(dir_path);
+  if (dir == NULL) {
+    perror("Impossible d'ouvrir le dossier ");
+    return EXEC_ERROR;
+  }
+  errno = 0;
+  struct dirent *entry;
+  int r = 1;
+  // Multiplie la longueur par 2 afin de ne pas avoir de seg fault
+  // lors du strncat.
+  char fullname[2 * PATH_MAX + 1];
+  while ((entry = readdir(dir)) != NULL) {
+    // Ignore les dossier . et ..
+    if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+      // Concatène le dossier au fichier afin d'avoir le nom complet
+      strcpy(fullname, (argc > 1) ? dir_path : "");
+      strncat(fullname, entry->d_name, PATH_MAX + 1);
+      if (strlen(fullname) > PATH_MAX + 1) {
+        fprintf(stderr, "Erreur : Chemin invalide\n");
+        r = EXEC_ERROR;
+        goto close;
+      }
+      if (print_file_info(fullname) == FILE_NOT_FOUND) {
+        fprintf(stderr, "Erreur : Fichier innatendu %s\n", fullname);
+        r = EXEC_ERROR;
+        goto close;
+      }
+    }
+  }
+  if (errno != 0) {
+    perror("Erreur lors de la lecture ");
+    r = EXEC_ERROR;
+    goto close;
+  }
+close:
+  if (closedir(dir) == -1) {
+    perror("Erreur lors de la fermeture du dossier ");
+    return EXEC_ERROR;
+  }
+
+  return r;
 }
+
+static int print_file_info(const char *filepath) {
+  struct stat stats;
+  if (lstat(filepath, &stats) < 0) {
+    return FILE_NOT_FOUND;
+  }
+  char mode_str[MODE_STR_LENGTH + 1];
+  if (strmode(stats.st_mode, mode_str, MODE_STR_LENGTH + 1) != 0) {
+    fprintf(stderr, "Warning : Mode tronqué\n");
+  }
+  // Infos utilisateur et groupe
+  struct passwd *user_info = getpwuid(stats.st_uid);
+  struct group *group_info = getgrgid(stats.st_gid);
+  // Formate la date
+  char last_modif[MAX_MODIF_STR_SIZE + 1];
+  size_t modif_writed = strftime(
+    last_modif, MAX_MODIF_STR_SIZE + 1, 
+    "%b.  %d %R", gmtime(&stats.st_mtim.tv_sec)
+  );
+  if (modif_writed == 0) {
+    fprintf(stderr, "Erreur : Impossible d'écrire la date de dernière "
+        "modification\n");
+    return PRINT_ERROR;
+  }
+  last_modif[0] = (char) tolower(last_modif[0]);
+  // Détermine la couleur du fichier
+  char color[COLOR_SIZE + 1];
+  get_color(color, COLOR_SIZE + 1, mode_str[0]);
+  // Affichage
+  fprintf(
+    stdout, 
+    "%-8lu %s %-4lu %-8s %-8s %-10lu %s %s%s\033[0m\n",
+    stats.st_ino, mode_str, stats.st_nlink, user_info->pw_name, 
+    group_info->gr_name, stats.st_size, last_modif, color, filepath
+  );
+  
+  return 0;
+}
+
+static int strmode(mode_t mode, char *buffer, size_t n) {
+  if (n < 1) {
+    return -1;
+  }
+  
+  /*
+   * Détermine le type de fichier
+   */
+  
+  int filetype[NB_FILE_TYPES] = {
+    S_ISREG(mode), S_ISDIR(mode), S_ISCHR(mode), S_ISBLK(mode),
+    S_ISFIFO(mode), S_ISLNK(mode), S_ISSOCK(mode)
+  };
+  const char *filetypes_chars = "-dcbpls";
+  for (size_t i = 0; i < NB_FILE_TYPES && i < n - 1; ++i) {
+    if (filetype[i]) {
+      buffer[0] = filetypes_chars[i];
+      break;
+    }
+  }
+  
+  /*
+   * Détermine les droits du fichier
+   */
+  
+  // On retire 1 car le premier caractère de la chaine est le type du fichier
+  int mode_masks[MODE_STR_LENGTH - 1] = {
+    // Masques droits utilisateurs
+    S_IRUSR, S_IWUSR, S_IXUSR,
+    // Masques droits groupes
+    S_IRGRP, S_IWGRP, S_IXGRP,
+    // Masques droits autres
+    S_IROTH, S_IWOTH, S_IXOTH
+  };
+  const char *mode_chars = "rwx";
+  for (size_t i = 1; i < n && i < 9; ++i) {
+    // Cas particulier : Le fichier est un lien symbolique. Si tel est le cas,
+    // conformément  au man le lien doit avoir les permissions 777.
+    // Voir : https://man7.org/linux/man-pages/man7/symlink.7.html
+    // (D'où deuxième partie de la condition)
+    if (((int) mode & mode_masks[i - 1]) > 0 || buffer[0] == 'l') {
+      buffer[i] = mode_chars[(i - 1) % 3];
+    } else {
+      buffer[i] = '-';
+    }
+  }
+  buffer[n - 1] = '\0';
+  
+  return (n < MODE_STR_LENGTH + 1) ? 1 : 0;
+}
+
+static void get_color(char *buffer, size_t n, char t) {
+  if (n < COLOR_SIZE + 1) {
+    return;
+  }
+  switch (t) {
+    case 'd':
+      strncpy(buffer, "\033[1;34m", COLOR_SIZE + 1);
+      return;
+    case 'l':
+      strncpy(buffer, "\033[1;36m", COLOR_SIZE + 1);
+      return;
+    case 'b':
+    case 'c':
+    case 'p':
+      strncpy(buffer, "\033[1;33m", COLOR_SIZE + 1);
+      return;
+    case 's':
+      strncpy(buffer, "\033[1;45m", COLOR_SIZE + 1);
+      return;
+  }
+  buffer[0] = '\0';
+}
+
+// ---------- Commande : ccp ----------
 
 static int exec_ccp(size_t argc, const char **argv) {
   return fprintf(stdout, "Commande custom : %zu %s\n", argc, argv[0]);
