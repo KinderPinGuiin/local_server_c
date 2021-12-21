@@ -57,10 +57,15 @@ int main(int argc, char **argv) {
     fprintf(stdout, "> ");
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
-      exit(EXIT_FAILURE);
+      r = EXIT_FAILURE;
+      goto free;
     }
     // Enlève le \n à la fin de la commande
     s[strlen(s) - 1] = '\0';
+    // Si la commande est vide on n'affiche pas de message d'erreur
+    if (strcmp(s, "") == 0) {
+      continue;
+    }
     // Si la commande est invalide on affiche une erreur
     if (!is_command_available(s)) {
       fprintf(stderr, "Commande invalide : %s\n", s);
