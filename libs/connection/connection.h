@@ -69,7 +69,7 @@ server_queue *connect(const char *shm_name);
  */
 int disconnect(server_queue *queue_p);
 
-/**.
+/**
  * Libère toutes les ressources associées à la file pointée par server_queue.
  * 
  * @param {server_queue *} La file à libérer.
