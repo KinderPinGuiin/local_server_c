@@ -61,6 +61,10 @@ int main(int argc, char **argv) {
     perror("Erreur lors de l'association d'une action aux signaux ");
     return EXIT_FAILURE;
   }
+  if (sigaction(SIGUSR1, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
   // Connexion à la file de requêtes
   server_q = connect(SHM_NAME);
   if (server_q == NULL) {
@@ -163,18 +167,21 @@ void sig_disconnect(int signum) {
     } else {
       fprintf(stdout, "%s\n", s);
     }
-    if (disconnect(server_q) < 0) {
-      fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
-      r = EXIT_FAILURE;
-    }
-    if (close_request_fifo(req_fifo) < 0) {
-      perror("Impossible de fermer la pipe de requête ");
-      r = EXIT_FAILURE;
-    }
-    if (close_response_fifo(res_fifo) < 0) {
-      perror("Impossible de fermer la pipe de réponse ");
-      r = EXIT_FAILURE;
-    }
+  } else if (signum == SIGUSR1) {
+    fprintf(stderr, 
+        "Interruption subite du serveur, vous avez été déconnecté\n");
+  }
+  if (disconnect(server_q) < 0) {
+    fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
+    r = EXIT_FAILURE;
+  }
+  if (close_request_fifo(req_fifo) < 0) {
+    perror("Impossible de fermer la pipe de requête ");
+    r = EXIT_FAILURE;
+  }
+  if (close_response_fifo(res_fifo) < 0) {
+    perror("Impossible de fermer la pipe de réponse ");
+    r = EXIT_FAILURE;
   }
 
   exit(r);
