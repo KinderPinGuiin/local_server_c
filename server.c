@@ -160,22 +160,6 @@ void *handle_request(void *request) {
   }
   int tube[2];
   while (strcmp(req_buffer, "exit") != 0) {
-    // Création d'un tube permettant de relier la sortie de la commande à
-    // la réponse
-    if (pipe(tube) == -1) {
-      perror("pipe ");
-      send_response(req->response_pipe, "Erreur lors de la liaison entre la "
-          "commande et la réponse\n");
-      return NULL;
-    }
-    if (dup2(tube[1], STDOUT_FILENO) < 0) {
-      perror("dup2 ");
-      send_response(req->response_pipe, "Erreur lors de la liaison entre la "
-          "commande et la réponse\n");
-      return NULL;
-    }
-    // On peut avoir au maximum strlen(buffer) tokens.
-    // On rajoute 1 afin de pouvoir ajouter le NULL.
     ssize_t n;
     char res_buffer[MAX_RESPONSE_LENGTH + 1];
     switch (fork()) {
@@ -185,37 +169,65 @@ void *handle_request(void *request) {
             "commande\n");
         return NULL;
       case 0:
-        if (close(tube[0]) < 0) {
-          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
+        // On execute la commande dans un fork afin de dupliquer la table des
+        // fichiers
+        if (pipe(tube) < 0) {
+          perror("pipe ");
+          fprintf(stderr, "Impossible de relier la commande et la réponse\n");
           return NULL;
         }
-        if (exec_cmd(req_buffer) < 0) {
-          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
+        if (dup2(tube[1], STDOUT_FILENO) < 0) {
+          perror("dup2 ");
+          fprintf(stderr, "Impossible de relier la commande et la réponse\n");
+          return NULL;
+        }
+        if (dup2(tube[1], STDERR_FILENO) < 0) {
+          perror("dup2 ");
+          fprintf(stderr, "Impossible de relier la commande et la réponse\n");
+          return NULL;
+        }
+        switch (fork()) {
+          case -1:
+            perror("fork ");
+            break;
+          case 0:
+            if (close(tube[0]) < 0) {
+              perror("close ");
+              send_response(req->response_pipe, "Erreur lors de l'exécution "
+                  "de la commande\n");
+            }
+            if (exec_cmd(req_buffer) < 0) {
+              send_response(req->response_pipe, "Erreur lors de l'exécution "
+                  "de la commande\n");
+            }
+            return NULL;
+          default:
+              if (close(tube[1]) < 0) {
+                perror("close ");
+                send_response(req->response_pipe, "Erreur lors de l'exécution "
+                    "de la commande\n");
+              }
+              wait(NULL);
+              if ((n = read(tube[0], res_buffer, MAX_COMMAND_LENGTH)) < 0) {
+                perror("read ");
+                send_response(req->response_pipe, "Erreur lors de la liaison "
+                    "entre la commande et la réponse\n");
+              } else {
+                res_buffer[n] = '\0';
+              }
+              if (close(tube[0]) < 0) {
+                perror("Impossible de fermer tube 0 : ");
+                return NULL;
+              }
+              if (send_response(req->response_pipe, res_buffer) < 0) {
+                perror("Impossible d'envoyer la réponse au client");
+              }
+            break;
         }
         return NULL;
       default:
-        // Lit ce qu'a écrit le programme sur la sortie standard et stock le
-        // résultat dans un buffer
-        if (close(tube[1]) < 0) {
-          perror("close ");
-        }
         // Attend la mort du processus enfant
         wait(NULL);
-        if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
-          perror("read");
-          send_response(req->response_pipe, "Erreur lors de la liaison entre "
-              "la commande et la réponse\n");
-        } else {
-          res_buffer[n] = '\0';
-        }
-        if (close(tube[0]) < 0) {
-          perror("Impossible de fermer le tube 0 : ");
-          return NULL;
-        }
-        // Envoie le contenu du buffer au client
-        if (send_response(req->response_pipe, res_buffer) < 0) {
-          perror("Impossible d'envoyer la réponse au client ");
-        }
     }
     if (listen_request(req->request_pipe, req_buffer) < 0) {
       perror("Erreur lors de la lecture d'une requete ");
