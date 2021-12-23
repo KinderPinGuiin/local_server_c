@@ -30,9 +30,10 @@ list *init_list(int (*compar)(void *, void *));
  * 
  * @param {list *} La liste où l'on souhaite ajouter un élement.
  * @param {void *} La valeur à ajouter.
+ * @param {size_t} La taille de l'élement à ajouter.
  * @return {int} 1 en cas de succès et un nombre négatif sinon.
  */
-int list_add(list *list_p, void *elem);
+int list_add(list *list_p, void *elem, size_t elem_size);
 
 /**
  * Retire la première occurence de elem dans la liste pointée par p_list.

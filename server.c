@@ -48,20 +48,38 @@ int allocate_request_ressources(shm_request *request);
 /**
  * Libère les ressources du serveur en cas d'interruption par un signal.
  */
-void sig_free_server(int signum);
+void sig_free(int signum);
+
+/**
+ * Libère les clients connectés au serveur en envoyant une réponse de 
+ * terminaison.
+ * 
+ * @param {char *} La pipe où envoyer la réponse.
+ * @param {int} L'accumulateur.
+ * @return {int} 1 si tous les clients ont été libérés et -1 sinon.
+ */
+int free_online_clients(char *res_pipe, int acc);
 
 /*
  * Variables globales
  */
 
+// File de requêtes de connexion au serveur
 server_queue *server_q;
+// Liste contenant les clients actuellement connectés au serveur ayant un
+// thread alloué.
+list *client_list;
 
-int main(void) {
-  // Gestion des options (à la fin)
-  
+int main(void) {  
+  // Création de la liste des clients où l'on stockera les pipes de réponse
+  client_list = init_list((int (*)(void *, void *)) strcmp);
+  if (client_list == NULL) {
+    fprintf(stderr, "Impossible d'intialiser la liste des clients\n");
+    return EXIT_FAILURE;
+  }
   // Gestion des signaux
   struct sigaction action;
-  action.sa_handler = sig_free_server;
+  action.sa_handler = sig_free;
   action.sa_flags = 0;
   if (sigfillset(&action.sa_mask) == -1) {
     perror("Erreur lors de la création du masque des signaux bloqués ");
@@ -114,6 +132,13 @@ int allocate_request_ressources(shm_request *request) {
     return NOT_ENOUGH_MEMORY;
   }
   memcpy(request_cpy, request, sizeof(shm_request));
+  // Ajoute le client à la liste
+  char res_pipe_cpy[NAME_MAX + 1];
+  int r = list_add(client_list, 
+              strncpy(res_pipe_cpy, request_cpy->response_pipe, NAME_MAX + 1), strlen(request_cpy->response_pipe));
+  if (r < 0) {
+    return NOT_ENOUGH_MEMORY;
+  }
   // Créer le thread et passe la requête dupliquée en paramètre et le détache
   pthread_t request_thread;
   if (pthread_create(&request_thread, NULL, handle_request, request_cpy) != 0) {
@@ -208,10 +233,11 @@ void *handle_request(void *request) {
   return NULL;
 }
 
-void sig_free_server(int signum) {
+void sig_free(int signum) {
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
     free_server_queue(server_q);
+    list_apply(client_list, (int (*)(void *, int)) free_online_clients);
   } else {
     fprintf(stderr, "Interruption du serveur suite à un signal innatendu : %d\n",
       signum);
@@ -219,4 +245,16 @@ void sig_free_server(int signum) {
   }
 
   exit(EXIT_SUCCESS);
+}
+
+int free_online_clients(char *res_pipe, int acc) {
+  long pid;
+  char unused[100];
+  res_pipe[18] = ' ';
+  sscanf(res_pipe, "%s %ld", unused, &pid);
+  if (kill((pid_t) pid, SIGUSR1) < 0) {
+    acc = -1;
+  }
+
+  return acc < 0 ? -1 : 1;
 }
