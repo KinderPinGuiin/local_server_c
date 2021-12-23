@@ -58,7 +58,7 @@ void sig_free(int signum);
  * @param {int} L'accumulateur.
  * @return {int} 1 si tous les clients ont été libérés et -1 sinon.
  */
-int free_online_clients(char *res_pipe, int acc);
+int free_online_clients(pid_t *pid, int acc);
 
 /*
  * Variables globales
@@ -133,9 +133,7 @@ int allocate_request_ressources(shm_request *request) {
   }
   memcpy(request_cpy, request, sizeof(shm_request));
   // Ajoute le client à la liste
-  char res_pipe_cpy[NAME_MAX + 1];
-  int r = list_add(client_list, 
-              strncpy(res_pipe_cpy, request_cpy->response_pipe, NAME_MAX + 1), strlen(request_cpy->response_pipe));
+  int r = list_add(client_list, &request_cpy->pid, sizeof(pid_t));
   if (r < 0) {
     return NOT_ENOUGH_MEMORY;
   }
@@ -237,22 +235,21 @@ void sig_free(int signum) {
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
     free_server_queue(server_q);
-    list_apply(client_list, (int (*)(void *, int)) free_online_clients);
+    int r = list_apply(client_list, (int (*)(void *, int)) free_online_clients);
+    if (r < 0) {
+      fprintf(stderr, "Tous les clients n'ont pas pu être libérés\n");
+    }
   } else {
-    fprintf(stderr, "Interruption du serveur suite à un signal innatendu : %d\n",
-      signum);
+    fprintf(stderr, 
+        "Interruption du serveur suite à un signal innatendu : %d\n", signum);
     free_server_queue(server_q);
   }
 
   exit(EXIT_SUCCESS);
 }
 
-int free_online_clients(char *res_pipe, int acc) {
-  long pid;
-  char unused[100];
-  res_pipe[18] = ' ';
-  sscanf(res_pipe, "%s %ld", unused, &pid);
-  if (kill((pid_t) pid, SIGUSR1) < 0) {
+int free_online_clients(pid_t *pid, int acc) {
+  if (kill(*pid, SIGUSR1) < 0) {
     acc = -1;
   }
 
