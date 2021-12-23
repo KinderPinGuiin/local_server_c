@@ -1,5 +1,5 @@
 /**
- * Interface simple permettant de manipuler des listes génériques.
+ * Implémentation de listes chaînées génériques simples thread-safe.
  * 
  * @author Jordan ELIE.
  */
