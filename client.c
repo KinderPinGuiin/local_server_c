@@ -169,7 +169,7 @@ void sig_disconnect(int signum) {
     }
   } else if (signum == SIGUSR1) {
     fprintf(stderr, 
-        "Interruption subite du serveur, vous avez été déconnecté\n");
+        "\nInterruption subite du serveur, vous avez été déconnecté\n");
   }
   if (disconnect(server_q) < 0) {
     fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
