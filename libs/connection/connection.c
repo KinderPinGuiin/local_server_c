@@ -107,19 +107,6 @@ server_queue *connect(const char *shm_name) {
   return server_q;
 }
 
-int wait_while_queue_is_empty(server_queue *queue_p) {
-  if (queue_p == NULL) {
-    return INVALID_POINTER;
-  }
-  if (sem_wait(&queue_p->full) == -1) {
-    return SEMAPHORE_ERROR;
-  }
-  if (sem_post(&queue_p->full) == -1) {
-    return SEMAPHORE_ERROR;
-  }
-  return 1;
-}
-
 int disconnect(server_queue *queue_p) {
   // Libère la projection mémoire
   if (munmap(queue_p, sizeof(server_queue)) < 0) {
