@@ -107,19 +107,6 @@ server_queue *connect(const char *shm_name) {
   return server_q;
 }
 
-int wait_while_queue_is_empty(server_queue *queue_p) {
-  if (queue_p == NULL) {
-    return INVALID_POINTER;
-  }
-  if (sem_wait(&queue_p->full) == -1) {
-    return SEMAPHORE_ERROR;
-  }
-  if (sem_post(&queue_p->full) == -1) {
-    return SEMAPHORE_ERROR;
-  }
-  return 1;
-}
-
 int disconnect(server_queue *queue_p) {
   // Libère la projection mémoire
   if (munmap(queue_p, sizeof(server_queue)) < 0) {
@@ -165,7 +152,8 @@ int send_shm_request(server_queue *server_q, const char request_pipe_name[],
   // Créé la requête à la volée
   shm_request request = {
     .request_pipe = "",
-    .response_pipe = ""
+    .response_pipe = "",
+    .pid = getpid()
   };
   // Remplit la requête en copiant les informations passées en paramètre
   strncpy(request.request_pipe, request_pipe_name, NAME_MAX);
