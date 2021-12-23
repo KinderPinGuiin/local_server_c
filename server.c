@@ -119,7 +119,7 @@ int main(void) {
       fprintf(stderr, "Impossible de traiter la requête\n");
       return EXIT_FAILURE;
     }
-    fprintf(stderr, "Une connexion a été établie avec un client\n");
+    fprintf(stdout, "Une connexion a été établie avec un client\n");
   }
 
   return EXIT_SUCCESS;
@@ -208,7 +208,7 @@ void *handle_request(void *request) {
                     "de la commande\n");
               }
               wait(NULL);
-              if ((n = read(tube[0], res_buffer, MAX_COMMAND_LENGTH)) < 0) {
+              if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
                 perror("read ");
                 send_response(req->response_pipe, "Erreur lors de la liaison "
                     "entre la commande et la réponse\n");
@@ -234,6 +234,11 @@ void *handle_request(void *request) {
       send_response(req->response_pipe, "Erreur lors de la récéption de la "
           "requête\n");
     }
+  }
+  if (list_remove(client_list, &req->pid) < 0) {
+    fprintf(stderr, 
+        "Impossible d'enlever le client %d de la liste des clients\n", 
+        req->pid);
   }
   if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
