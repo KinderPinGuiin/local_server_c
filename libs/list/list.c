@@ -28,6 +28,7 @@ struct list {
   clist *head;
   clist *tail;
   size_t size;
+  void *last_inserted;
   int (*compar)(void *, void*);
 };
 
@@ -42,6 +43,7 @@ list *init_list(int (*compar)(void *, void *)) {
   list_p->head = NULL;
   list_p->tail = NULL;
   list_p->size = 0;
+  list_p->last_inserted = NULL;
   list_p->compar = compar;
 
   return list_p;
@@ -72,6 +74,7 @@ int list_add(list *list_p, void *elem, size_t elem_size) {
     list_p->tail->next = cell;
   }
   list_p->tail = cell;
+  list_p->last_inserted = cell->value;
   ++list_p->size;
   // Donne le feu vert aux autres processus / threads
   if (sem_post(&list_p->mutex) < 0) {
@@ -113,6 +116,14 @@ int list_remove(list *list_p, void *elem) {
   return r;
 }
 
+void *list_last_inserted(list *list_p) {
+  if (list_p == NULL) {
+    return NULL;
+  }
+
+  return list_p->last_inserted;
+}
+
 int list_apply(list *list_p, int (*apply)(void *, int)) {
   if (list_p == NULL || apply == NULL) {
     return NULL_ELEM;
@@ -131,13 +142,12 @@ int list_dispose(list *list_p) {
   if (list_p == NULL) {
     return NULL_ELEM;
   }
-  // Attend au cas où la liste soit en train d'être modifiée
   clist *cell = list_p->head;
   clist *next_cell;
   while (cell != NULL) {
     next_cell = cell->next;
-    free(cell);
     free(cell->value);
+    free(cell);
     cell = next_cell;
   }
   free(list_p);
