@@ -129,13 +129,13 @@ int main(void) {
 
 int allocate_request_ressources(shm_request *request) {
   // Ajoute la requête du client à la liste
-  int r = list_add(client_list, request, sizeof(*request));
-  if (r < 0) {
+  shm_request *r = list_add(client_list, request, sizeof(*request));
+  if (r == NULL) {
     return NOT_ENOUGH_MEMORY;
   }
   // Créer le thread et passe la requête dupliquée en paramètre et le détache
   pthread_t request_thread;
-  if (pthread_create(&request_thread, NULL, handle_request, list_last_inserted(client_list)) != 0) {
+  if (pthread_create(&request_thread, NULL, handle_request, r) != 0) {
     return THREAD_ERROR;
   }
   if (pthread_detach(request_thread) != 0) {
@@ -220,13 +220,13 @@ void *handle_request(void *request) {
           "requête\n");
     }
   }
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
+    perror("Impossible d'envoyer la réponse au client ");
+  }
   if (list_remove(client_list, req) <= 0) {
     fprintf(stderr, 
         "Impossible d'enlever le client %d de la liste des clients\n", 
         req->pid);
-  }
-  if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
-    perror("Impossible d'envoyer la réponse au client ");
   }
   return NULL;
 }
@@ -251,11 +251,13 @@ void sig_free(int signum) {
       fprintf(stderr, "Impossible de libérer la liste des clients\n");
       status = EXIT_FAILURE;
     }
-    free_server_queue(server_q);
   } else {
     fprintf(stderr, 
         "Interruption du serveur suite à un signal innatendu : %d\n", signum);
-    free_server_queue(server_q);
+  }
+  if (free_server_queue(server_q) < 0) {
+    perror("Impossible de libérer la SHM ");
+    status = EXIT_FAILURE;
   }
 
   exit(status);

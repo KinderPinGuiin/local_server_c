@@ -49,22 +49,22 @@ list *init_list(int (*compar)(void *, void *)) {
   return list_p;
 }
 
-int list_add(list *list_p, void *elem, size_t elem_size) {
+void *list_add(list *list_p, void *elem, size_t elem_size) {
   if (list_p == NULL || elem == NULL) {
-    return NULL_ELEM;
+    return NULL;
   }
   // Attend au cas où la liste soit en train d'être modifiée
   if (sem_wait(&list_p->mutex) < 0) {
-    return SEM_ERROR;
+    return NULL;
   }
   // Ajoute l'élement dans la liste
   clist *cell = malloc(sizeof(*cell));
   if (cell == NULL) {
-    return MEMORY_ERROR;
+    return NULL;
   }
   cell->value = malloc(elem_size);
   if (cell->value == NULL) {
-    return MEMORY_ERROR;
+    return NULL;
   }
   memcpy(cell->value, elem, elem_size);
   cell->next = NULL;
@@ -75,13 +75,12 @@ int list_add(list *list_p, void *elem, size_t elem_size) {
   }
   list_p->tail = cell;
   list_p->last_inserted = cell->value;
-  ++list_p->size;
   // Donne le feu vert aux autres processus / threads
   if (sem_post(&list_p->mutex) < 0) {
-    return SEM_ERROR;
+    return NULL;
   }
 
-  return 1;
+  return cell->value;
 }
 
 int list_remove(list *list_p, void *elem) {
@@ -114,14 +113,6 @@ int list_remove(list *list_p, void *elem) {
   }
 
   return r;
-}
-
-void *list_last_inserted(list *list_p) {
-  if (list_p == NULL) {
-    return NULL;
-  }
-
-  return list_p->last_inserted;
 }
 
 int list_apply(list *list_p, int (*apply)(void *, int)) {
