@@ -45,6 +45,8 @@ void *handle_request(void *request);
  */
 int allocate_request_ressources(shm_request *request);
 
+int request_cmp(shm_request *a, shm_request *b);
+
 /**
  * Libère les ressources du serveur en cas d'interruption par un signal.
  */
@@ -54,11 +56,11 @@ void sig_free(int signum);
  * Libère les clients connectés au serveur en envoyant une réponse de 
  * terminaison.
  * 
- * @param {char *} La pipe où envoyer la réponse.
+ * @param {shm_request *} La requête du client à libérer.
  * @param {int} L'accumulateur.
  * @return {int} 1 si tous les clients ont été libérés et -1 sinon.
  */
-int free_online_clients(pid_t *pid, int acc);
+int free_online_clients(shm_request *req, int acc);
 
 /*
  * Variables globales
@@ -72,7 +74,7 @@ list *client_list;
 
 int main(void) {  
   // Création de la liste des clients où l'on stockera les pipes de réponse
-  client_list = init_list((int (*)(void *, void *)) strcmp);
+  client_list = init_list((int (*)(void *, void *)) request_cmp);
   if (client_list == NULL) {
     fprintf(stderr, "Impossible d'intialiser la liste des clients\n");
     return EXIT_FAILURE;
@@ -126,20 +128,14 @@ int main(void) {
 }
 
 int allocate_request_ressources(shm_request *request) {
-  // Duplique la requête pour pas qu'elle ne soit perdue lors de son traitement
-  shm_request *request_cpy = malloc(sizeof(shm_request));
-  if (request_cpy == NULL) {
-    return NOT_ENOUGH_MEMORY;
-  }
-  memcpy(request_cpy, request, sizeof(shm_request));
-  // Ajoute le client à la liste
-  int r = list_add(client_list, &request_cpy->pid, sizeof(pid_t));
-  if (r < 0) {
+  // Ajoute la requête du client à la liste
+  shm_request *r = list_add(client_list, request, sizeof(*request));
+  if (r == NULL) {
     return NOT_ENOUGH_MEMORY;
   }
   // Créer le thread et passe la requête dupliquée en paramètre et le détache
   pthread_t request_thread;
-  if (pthread_create(&request_thread, NULL, handle_request, request_cpy) != 0) {
+  if (pthread_create(&request_thread, NULL, handle_request, r) != 0) {
     return THREAD_ERROR;
   }
   if (pthread_detach(request_thread) != 0) {
@@ -224,38 +220,51 @@ void *handle_request(void *request) {
           "requête\n");
     }
   }
-  if (list_remove(client_list, &req->pid) < 0) {
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
+    perror("Impossible d'envoyer la réponse au client ");
+  }
+  if (list_remove(client_list, req) <= 0) {
     fprintf(stderr, 
         "Impossible d'enlever le client %d de la liste des clients\n", 
         req->pid);
   }
-  if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
-    perror("Impossible d'envoyer la réponse au client ");
-  }
-  // Libère les ressources allouées par la requête
-  free(req);
   return NULL;
 }
 
+int request_cmp(shm_request *a, shm_request *b) {
+  if (a->pid > b->pid) {
+    return 1;
+  }
+  return a->pid == b->pid ? 0 : -1;
+}
+
 void sig_free(int signum) {
+  int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
-    free_server_queue(server_q);
     int r = list_apply(client_list, (int (*)(void *, int)) free_online_clients);
     if (r < 0) {
       fprintf(stderr, "Tous les clients n'ont pas pu être libérés\n");
+      status = EXIT_FAILURE;
+    }
+    if (list_dispose(client_list) < 0) {
+      fprintf(stderr, "Impossible de libérer la liste des clients\n");
+      status = EXIT_FAILURE;
     }
   } else {
     fprintf(stderr, 
         "Interruption du serveur suite à un signal innatendu : %d\n", signum);
-    free_server_queue(server_q);
+  }
+  if (free_server_queue(server_q) < 0) {
+    perror("Impossible de libérer la SHM ");
+    status = EXIT_FAILURE;
   }
 
-  exit(EXIT_SUCCESS);
+  exit(status);
 }
 
-int free_online_clients(pid_t *pid, int acc) {
-  if (kill(*pid, SIGUSR1) < 0) {
+int free_online_clients(shm_request *req, int acc) {
+  if (kill(req->pid, SIGUSR1) < 0) {
     acc = -1;
   }
 

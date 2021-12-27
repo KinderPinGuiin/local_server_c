@@ -1,5 +1,5 @@
 /**
- * Interface simple permettant de manipuler des listes génériques.
+ * Implémentation de listes chaînées génériques simples thread-safe.
  * 
  * @author Jordan ELIE.
  */
@@ -25,15 +25,15 @@ typedef struct list list;
 list *init_list(int (*compar)(void *, void *));
 
 /**
- * Ajoute dynamiquement elem à la liste pointée par p_list. Retourne 1
- * en cas de succès et un nombre négatif en cas d'erreur.
+ * Ajoute dynamiquement elem à la liste pointée par p_list. Retourne l'élement
+ * ajouté à la liste en cas de succès et NULL sinon.
  * 
  * @param {list *} La liste où l'on souhaite ajouter un élement.
  * @param {void *} La valeur à ajouter.
  * @param {size_t} La taille de l'élement à ajouter.
- * @return {int} 1 en cas de succès et un nombre négatif sinon.
+ * @return {void *} La valeur dans la liste en cas de succès et NULL sinon.
  */
-int list_add(list *list_p, void *elem, size_t elem_size);
+void *list_add(list *list_p, void *elem, size_t elem_size);
 
 /**
  * Retire la première occurence de elem dans la liste pointée par p_list.
