@@ -28,7 +28,6 @@ struct list {
   clist *head;
   clist *tail;
   size_t size;
-  void *last_inserted;
   int (*compar)(void *, void*);
 };
 
@@ -43,7 +42,6 @@ list *init_list(int (*compar)(void *, void *)) {
   list_p->head = NULL;
   list_p->tail = NULL;
   list_p->size = 0;
-  list_p->last_inserted = NULL;
   list_p->compar = compar;
 
   return list_p;
@@ -74,7 +72,7 @@ void *list_add(list *list_p, void *elem, size_t elem_size) {
     list_p->tail->next = cell;
   }
   list_p->tail = cell;
-  list_p->last_inserted = cell->value;
+  ++list_p->size;
   // Donne le feu vert aux autres processus / threads
   if (sem_post(&list_p->mutex) < 0) {
     return NULL;
@@ -92,16 +90,24 @@ int list_remove(list *list_p, void *elem) {
     return SEM_ERROR;
   }
   clist **cell = &(list_p->head);
+  clist *prev = NULL;
   int r = 0;
+  size_t i = 0;
   while (*cell != NULL) {
+    ++i;
     if (list_p->compar(elem, (*cell)->value) == 0) {
       clist *c = *cell;
+      // Déplace la queue si l'on retire le dernier élement
+      if (i == list_p->size) {
+        list_p->tail = prev;
+      }
       *cell = (*cell)->next;
       free(c->value);
       free(c);
       r = 1;
       break;
     }
+    prev = *cell;
     cell = &((*cell)->next);
   }
   if (r == 1) {

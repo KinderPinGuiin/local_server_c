@@ -47,8 +47,6 @@ void *list_add(list *list_p, void *elem, size_t elem_size);
  */
 int list_remove(list *list_p, void *elem);
 
-void *list_last_inserted(list *list_p);
-
 /**
  * Applique à tous les élements pointés par list_p la fonction apply.
  * apply prend en premier paramètre l'élement courant de la liste, en second
