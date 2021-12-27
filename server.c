@@ -182,13 +182,11 @@ void *handle_request(void *request) {
         }
         if (close(tube[0]) < 0) {
           perror("close ");
-          send_response(req->response_pipe, "Erreur lors de l'exécution "
-              "de la commande\n");
+          fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
           return NULL;
         }
         if (exec_cmd(req_buffer) < 0) {
-          send_response(req->response_pipe, "Erreur lors de l'exécution "
-              "de la commande\n");
+          fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
         }
         return NULL;
       default:
