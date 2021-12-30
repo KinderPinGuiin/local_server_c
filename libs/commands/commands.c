@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <linux/limits.h>
 #include "commands.h"
+#include "../connection/connection.h"
 
 /**
  * Les types possibles des commandes
@@ -49,15 +50,15 @@ static const int TYPES[] = {
  * Fonctions de traitement des commandes personnalisées.
  */
 
-static int exec_help(size_t argc, const char **argv);
-static int exec_info(size_t argc, const char **argv);
-static int exec_ccp(size_t argc, const char **argv);
-static int exec_lsl(size_t argc, const char **argv);
+static int exec_help(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_info(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_lsl(shm_request *shm_req, size_t argc, const char **argv);
 
 /**
  * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
  */
-static int (* FUNCTIONS[])(size_t, const char **) = {
+static int (* FUNCTIONS[])(shm_request *, size_t, const char **) = {
   NULL,
   NULL, NULL, NULL, NULL,
   exec_help, exec_info, exec_ccp, exec_lsl
@@ -103,7 +104,7 @@ int is_command_available(const char *cmd) {
   return 0;
 }
 
-int exec_cmd(const char *cmd) {
+int exec_cmd(const char *cmd, shm_request *shm_req) {
   int cmd_id;
   if (!(cmd_id = is_command_available(cmd))) {
     return INVALID_COMMAND;
@@ -133,7 +134,7 @@ int exec_cmd(const char *cmd) {
     }
   } else {
     // Execute la fonction correspondante à la commande personnalisée
-    return FUNCTIONS[cmd_id](i, (const char **) tokens);
+    return FUNCTIONS[cmd_id](shm_req, i, (const char **) tokens);
   }
         
   return 1;
@@ -141,22 +142,24 @@ int exec_cmd(const char *cmd) {
 
 // ---------- Commande : help ----------
 
-static int exec_help(size_t argc, const char **argv) {
-  if (argc && argv[0]) { /* Enlève le warn */ }
+static int exec_help(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req && argc && argv[0]) { /* Enlève le warn à la compilation */ }
   print_commands();
   return 1;
 }
 
 // ---------- Commande : info ----------
 
+#define PID_NB_NUMBER 7
 #define LINE_MAX_LENGTH 255
 
-static int exec_info(size_t argc, const char **argv) {
+static int exec_info(shm_request *shm_req, size_t argc, const char **argv) {
+  char pid[PID_NB_NUMBER + 1];
   if (argc < 2) {
-    fprintf(stdout, "Usage : info <PID>\n");
-    return EXEC_ERROR;
+    snprintf(pid, PID_NB_NUMBER, "%d", shm_req->pid);
+  } else {
+    strncpy(pid, argv[1], PID_NB_NUMBER);
   }
-  const char *pid = argv[1];
 	fprintf(stdout, "----- Caractéristiques du programme %s -----\n", pid);
 
 	/*
@@ -274,7 +277,8 @@ static int strmode(mode_t mode, char *buffer, size_t n);
  */
 static void get_color(char *buffer, size_t n, char t);
 
-static int exec_lsl(size_t argc, const char **argv) {
+static int exec_lsl(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req) { /* Enlève le warn à la compilation */ }
   char dir_path[PATH_MAX + 1];
   // Détermine le dossier sur lequel éxecuter 
   if (argc == 1) {
@@ -449,6 +453,7 @@ static void get_color(char *buffer, size_t n, char t) {
 
 // ---------- Commande : ccp ----------
 
-static int exec_ccp(size_t argc, const char **argv) {
+static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req) { /* Enlève le warn */ }
   return fprintf(stdout, "Commande custom : %zu %s\n", argc, argv[0]);
 }

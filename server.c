@@ -185,7 +185,7 @@ void *handle_request(void *request) {
           fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
           return NULL;
         }
-        if (exec_cmd(req_buffer) < 0) {
+        if (exec_cmd(req_buffer, req) < 0) {
           fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
         }
         return NULL;
