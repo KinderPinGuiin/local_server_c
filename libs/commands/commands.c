@@ -42,7 +42,7 @@ static const char *COMMANDS[] = {
   // Commandes usuelles
   "ls", "ps", "pwd", "rm", "exit",
   // Commandes personnalisées
-  "help", "info", "ccp", "lsl"
+  "help", "info", "ccp", "lsl", "uinfo"
 };
 
 /**
@@ -51,7 +51,7 @@ static const char *COMMANDS[] = {
 static const int TYPES[] = {
   INVALID_CMD,
   USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
-  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
+  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
 /*
@@ -479,7 +479,7 @@ static void get_color(char *buffer, size_t n, char t) {
  * WRITE_ERROR en cas d'erreur d'écriture. Si max vaut -1 alors on copiera
  * tout le fichier.
  */
-int ccp(int fd_src, int fd_dest, long max);
+static int ccp(int fd_src, int fd_dest, long max);
 
 static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
   if (shm_req) { /* Enlève le warn */ }
@@ -496,7 +496,9 @@ static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
 	long bvalue = 0;
 	long evalue = -1;	
 	char c;
-	while ((c = (char) getopt((int) argc, (char *const *) argv, "f:d:vab:e:")) != -1) {
+	while (
+    (c = (char) getopt((int) argc, (char *const *) argv, "f:d:vab:e:")) != -1
+  ) {
 		switch (c) {
 			case 'f':
 				src_file = optarg;
@@ -520,7 +522,8 @@ static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
 			case 'e':
 				evalue = atol(optarg);
 				if (evalue < bvalue) {
-					fprintf(stderr, "Value of -e must be positive and greater than -b.\n");
+					fprintf(stderr, 
+              "Value of -e must be positive and greater than -b.\n");
 					return EXEC_ERROR;
 				}
 				break;
@@ -551,7 +554,9 @@ static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
 	}
 	// Ouvre le fichier de destination
 	int dest_fd;
-	if ((dest_fd = open(dest_file, O_CREAT | O_WRONLY | dest_mode, S_IRWXU)) == -1) {
+	if (
+    (dest_fd = open(dest_file, O_CREAT | O_WRONLY | dest_mode, S_IRWXU)) == -1
+  ) {
 		fprintf(stderr, "Cannot open %s.\n", dest_file);
 		close(src_fd);
 		return EXEC_ERROR;
@@ -569,7 +574,7 @@ static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
 	return 1;
 }
 
-int ccp(int fd_src, int fd_dest, off_t max) {
+static int ccp(int fd_src, int fd_dest, off_t max) {
 	char buffer[1];
 	ssize_t readed;
 	while (max == -1 || TELL(fd_dest) != max) {
