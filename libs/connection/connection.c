@@ -153,7 +153,8 @@ int send_shm_request(server_queue *server_q, const char request_pipe_name[],
   shm_request request = {
     .request_pipe = "",
     .response_pipe = "",
-    .pid = getpid()
+    .pid = getpid(),
+    .uid = getuid()
   };
   // Remplit la requête en copiant les informations passées en paramètre
   strncpy(request.request_pipe, request_pipe_name, NAME_MAX);
