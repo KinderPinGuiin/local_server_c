@@ -86,6 +86,7 @@ typedef struct shm_request {
   char request_pipe[NAME_MAX + 1];
   char response_pipe[NAME_MAX + 1];
   pid_t pid;
+  uid_t uid;
 } shm_request;
 
 /**
