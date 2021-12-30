@@ -71,8 +71,6 @@ server_queue *server_q;
 // Liste contenant les clients actuellement connectés au serveur ayant un
 // thread alloué.
 list *client_list;
-// Indique si la liste des requêtes est en train d'être libérée
-int freeing = 0;
 
 int main(void) {  
   // Création de la liste des clients où l'on stockera les pipes de réponse
@@ -220,11 +218,6 @@ void *handle_request(void *request) {
           "requête\n");
     }
   }
-  // Si la liste des requêtes est en train d'être libéré, il n'y a pas besoin
-  // d'envoyer une réponse
-  if (freeing == 1) {
-    return NULL;
-  }
   if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
@@ -244,7 +237,6 @@ int request_cmp(shm_request *a, shm_request *b) {
 }
 
 void sig_free(int signum) {
-  freeing = 1;
   int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");

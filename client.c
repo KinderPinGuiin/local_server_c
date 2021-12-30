@@ -153,17 +153,18 @@ void sig_disconnect(int signum) {
   int r = EXIT_SUCCESS;  
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
+    char s[MAX_RESPONSE_LENGTH + 1];
+    if (send_request(req_fifo, "exit") < 0 
+        || listen_response(res_fifo, s) < 0) {
+      fprintf(stderr, "Impossible d'échanger une requête de fin de "
+          "transmission avec le serveur");
+      r = EXIT_FAILURE;
+    } else {
+      fprintf(stdout, "%s\n", s);
+    }
   } else if (signum == SIGUSR1) {
     fprintf(stderr, 
         "\nInterruption subite du serveur, vous avez été déconnecté\n");
-  }
-  char s[MAX_RESPONSE_LENGTH + 1];
-  if (send_request(req_fifo, "exit") < 0) {
-    fprintf(stderr, "Impossible d'échanger une requête de fin de "
-        "transmission avec le serveur");
-    r = EXIT_FAILURE;
-  } else {
-    fprintf(stdout, "%s\n", s);
   }
   if (disconnect(server_q) < 0) {
     fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
