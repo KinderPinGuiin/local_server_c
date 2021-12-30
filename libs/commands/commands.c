@@ -16,6 +16,7 @@
 #include <errno.h>
 #include <linux/limits.h>
 #include "commands.h"
+#include "../connection/connection.h"
 
 /**
  * Les types possibles des commandes
@@ -24,6 +25,14 @@
 #define USUAL_CMD 1
 #define CUSTOM_CMD 2
 
+/*
+ * Variables externes
+ */
+
+extern char *optarg;
+extern int optind, optopt;
+extern int errno;
+
 /**
  * Les différentes commandes disponibles
  */
@@ -31,9 +40,9 @@ static const char *COMMANDS[] = {
   // Valeur particulière pour le retour de is_command_available
   NULL,
   // Commandes usuelles
-  "ls", "ps", "pwd", "exit",
+  "ls", "ps", "pwd", "rm", "touch", "mkdir", "exit",
   // Commandes personnalisées
-  "help", "info", "ccp", "lsl"
+  "help", "info", "ccp", "lsl", "uinfo"
 };
 
 /**
@@ -41,26 +50,29 @@ static const char *COMMANDS[] = {
  */
 static const int TYPES[] = {
   INVALID_CMD,
-  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
-  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
+  // Commandes usuelles
+  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
+  // Commandes personnalisées
+  CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
 /*
  * Fonctions de traitement des commandes personnalisées.
  */
 
-static int exec_help(size_t argc, const char **argv);
-static int exec_info(size_t argc, const char **argv);
-static int exec_ccp(size_t argc, const char **argv);
-static int exec_lsl(size_t argc, const char **argv);
+static int exec_help(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_info(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_lsl(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_uinfo(shm_request *shm_req, size_t argc, const char **argv);
 
 /**
  * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
  */
-static int (* FUNCTIONS[])(size_t, const char **) = {
+static int (* FUNCTIONS[])(shm_request *, size_t, const char **) = {
   NULL,
-  NULL, NULL, NULL, NULL,
-  exec_help, exec_info, exec_ccp, exec_lsl
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  exec_help, exec_info, exec_ccp, exec_lsl, exec_uinfo
 };
 
 void print_commands() {
@@ -69,16 +81,20 @@ void print_commands() {
     "    - \033[0;36mls ...\033[0m : Toutes les variantes de ls.\n"
     "    - \033[0;36mps ...\033[0m : Toutes les variantes de ps.\n"
     "    - \033[0;36mpwd ... \033[0m : Toutes les variantes de pwd.\n"
+    "    - \033[0;36mrm ... \033[0m : Toutes les variantes de rm.\n"
+    "    - \033[0;36mmkdir ... \033[0m : Toutes les variantes de mkdir.\n"
+    "    - \033[0;36mtouch ... \033[0m : Toutes les variantes de touch.\n"
     "    - \033[0;36mexit\033[0m : Permet de se déconnecter du "
       "serveur.\n"
     "Liste des commandes personnalisées disponibles :\n"
     "    - \033[0;36minfo <PID>\033[0m : Affiche sur la sortie standard les "
       "informations concernant le processus de numéro PID.\n"
-    "    - \033[0;36mccp <src> <dest> -[v|a|b|e]\033[0m : Copie le fichier src "
+    "    - \033[0;36mccp -f <src> -d <dest> -[v|a|b|e]\033[0m : Copie src "
       "dans le fichier dest. -v permet de vérifier si le fichier existe déjà, "
       "-a permet de copier en mode ajout, -b et -e permettent respectivement "
       "de définir un offset de début et de fin.\n"
     "    - \033[0;36mlsl\033[0m : Commande raccourcie de ls -ali.\n"
+    "    - \033[0;36muinfo\033[0m : Vos informations utilisateurs.\n"
   );
 }
 
@@ -103,7 +119,7 @@ int is_command_available(const char *cmd) {
   return 0;
 }
 
-int exec_cmd(const char *cmd) {
+int exec_cmd(const char *cmd, shm_request *shm_req) {
   int cmd_id;
   if (!(cmd_id = is_command_available(cmd))) {
     return INVALID_COMMAND;
@@ -133,7 +149,7 @@ int exec_cmd(const char *cmd) {
     }
   } else {
     // Execute la fonction correspondante à la commande personnalisée
-    return FUNCTIONS[cmd_id](i, (const char **) tokens);
+    return FUNCTIONS[cmd_id](shm_req, i, (const char **) tokens);
   }
         
   return 1;
@@ -141,22 +157,24 @@ int exec_cmd(const char *cmd) {
 
 // ---------- Commande : help ----------
 
-static int exec_help(size_t argc, const char **argv) {
-  if (argc && argv[0]) {}
+static int exec_help(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req && argc && argv[0]) { /* Enlève le warn à la compilation */ }
   print_commands();
   return 1;
 }
 
 // ---------- Commande : info ----------
 
+#define PID_NB_NUMBER 7
 #define LINE_MAX_LENGTH 255
 
-static int exec_info(size_t argc, const char **argv) {
+static int exec_info(shm_request *shm_req, size_t argc, const char **argv) {
+  char pid[PID_NB_NUMBER + 1];
   if (argc < 2) {
-    fprintf(stdout, "Usage : info <PID>\n");
-    return EXEC_ERROR;
+    snprintf(pid, PID_NB_NUMBER, "%d", shm_req->pid);
+  } else {
+    strncpy(pid, argv[1], PID_NB_NUMBER);
   }
-  const char *pid = argv[1];
 	fprintf(stdout, "----- Caractéristiques du programme %s -----\n", pid);
 
 	/*
@@ -274,7 +292,8 @@ static int strmode(mode_t mode, char *buffer, size_t n);
  */
 static void get_color(char *buffer, size_t n, char t);
 
-static int exec_lsl(size_t argc, const char **argv) {
+static int exec_lsl(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req) { /* Enlève le warn à la compilation */ }
   char dir_path[PATH_MAX + 1];
   // Détermine le dossier sur lequel éxecuter 
   if (argc == 1) {
@@ -449,6 +468,156 @@ static void get_color(char *buffer, size_t n, char t) {
 
 // ---------- Commande : ccp ----------
 
-static int exec_ccp(size_t argc, const char **argv) {
-  return fprintf(stdout, "Commande custom : %zu %s\n", argc, argv[0]);
+// Détermine la position courante du fichier lié au descripteur x.
+#define TELL(x) (lseek(x, 0, SEEK_CUR))
+
+// Détermine la taille du fichier lié au descripteur x
+#define SIZE(x) (lseek(x, 0, SEEK_END));
+
+// Replace le curseur du fichier lié au descripteur x au début
+#define RESET(x) (lseek(x, 0, SEEK_CUR));
+
+#define READ_ERROR -1
+#define WRITE_ERROR -2
+
+/*
+ * Copie-colle le fichier de descripteur fd_src dans fd_dest jusqu'à max.
+ * Renvoie 0 si tout s'est bien passé, READ_ERROR en cas d'erreur de lecture,
+ * WRITE_ERROR en cas d'erreur d'écriture. Si max vaut -1 alors on copiera
+ * tout le fichier.
+ */
+static int ccp(int fd_src, int fd_dest, long max);
+
+static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
+  if (shm_req) { /* Enlève le warn */ }
+	if (argc == 1) {
+		fprintf(stderr, 
+        "Arguments manquants, tapez help pour plus d'information\n");
+		return EXEC_ERROR;
+	}
+	// Analyse des arguments
+	char *src_file;
+	char *dest_file;
+	int src_mode = 0;
+	int dest_mode = O_TRUNC;
+	long bvalue = 0;
+	long evalue = -1;	
+	char c;
+	while (
+    (c = (char) getopt((int) argc, (char *const *) argv, "f:d:vab:e:")) != -1
+  ) {
+		switch (c) {
+			case 'f':
+				src_file = optarg;
+				break;
+			case 'd':
+				dest_file = optarg;
+				break;
+			case 'v':
+				src_mode = O_EXCL;
+				break;
+			case 'a':
+				dest_mode = O_APPEND;
+				break;
+			case 'b':
+				bvalue = atol(optarg);
+				if (bvalue < 0) {
+					fprintf(stderr, "Value of -b must be positive.\n");
+					return EXEC_ERROR;
+				}
+				break;
+			case 'e':
+				evalue = atol(optarg);
+				if (evalue < bvalue) {
+					fprintf(stderr, 
+              "Value of -e must be positive and greater than -b.\n");
+					return EXEC_ERROR;
+				}
+				break;
+			case '?':
+				if (optopt == 'f' || optopt == 'd' || optopt == 'b' || optopt == 'e') {
+					fprintf(stderr, "Option -%c need value.\n", optopt);
+				} else if (isprint(optopt)) {
+					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+				} else {
+					fprintf(stderr, "Unknown option, use -h for help");
+				}
+				return EXEC_ERROR;
+				break;
+			default:
+				abort();
+		}
+	}
+	// Ouvre le fichier source et seek
+	int src_fd;
+	if ((src_fd = open(src_file, O_CREAT | src_mode, S_IRWXU)) == -1) {
+		fprintf(stderr, "Cannot open %s.\n", src_file);
+		return EXEC_ERROR;
+	}
+	if (lseek(src_fd, (off_t) bvalue, SEEK_SET) == -1) {
+		fprintf(stderr, "Cannot seek file to value %ld", bvalue);
+		close(src_fd);
+		return EXEC_ERROR;
+	}
+	// Ouvre le fichier de destination
+	int dest_fd;
+	if (
+    (dest_fd = open(dest_file, O_CREAT | O_WRONLY | dest_mode, S_IRWXU)) == -1
+  ) {
+		fprintf(stderr, "Cannot open %s.\n", dest_file);
+		close(src_fd);
+		return EXEC_ERROR;
+	}
+	// Lance la copie
+	int ccp_r = ccp(src_fd, dest_fd, (off_t) evalue);
+	if (ccp_r != 0) {
+		fprintf(stderr, 
+		  (ccp_r == READ_ERROR) ? "Read error.\n" : "Write error.\n");
+		close(src_fd);
+		close(dest_fd);
+		return EXEC_ERROR;
+	}
+	
+	return 1;
+}
+
+static int ccp(int fd_src, int fd_dest, off_t max) {
+	char buffer[1];
+	ssize_t readed;
+	while (max == -1 || TELL(fd_dest) != max) {
+		if ((readed = read(fd_src, buffer, 1)) == -1) {
+			return READ_ERROR;
+		} else if (readed == 0) {
+			break;
+		}
+		if (write(fd_dest, buffer, 1) == -1) {
+			return WRITE_ERROR;
+		}
+	}
+	
+	return 0;
+}
+
+// ---------- Commande : uinfo ----------
+
+static int exec_uinfo(shm_request *shm_req, size_t argc, const char **argv) {
+  if (argc && argv) { /* Enlève le warn */ }
+  struct passwd *result;
+  // Récupère les données de l'utilisateur
+  if ((result = getpwuid(shm_req->uid)) == NULL) {
+    fprintf(stderr, 
+        "Une erreur est survenue lors de la récupération de vos données\n");
+  }
+  // Affiche les données
+  fprintf(stdout, 
+      "Nom d'utilisateur : %s\n"
+      "UID : %d\n"
+      "GID : %d\n"
+      "Répertoire home : %s\n"
+      "Shell : %s\n",
+      result->pw_name, result->pw_uid, result->pw_gid,
+      result->pw_dir, result->pw_shell
+  );
+
+  return 1;
 }

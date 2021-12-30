@@ -9,6 +9,8 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
+#include "../connection/connection.h"
+
 /*
  * Codes d'erreur
  */
@@ -36,8 +38,9 @@ int is_command_available(const char *cmd);
  * et un nombre négatif en cas d'erreur.
  * 
  * @param {char *} La commande à exécuter.
+ * @param {shm_request *} La requête shm du client.
  * @return {int} 1 en cas de succès et un nombre négatif en cas d'erreur.
  */
-int exec_cmd(const char *cmd);
+int exec_cmd(const char *cmd, shm_request *shm_req);
 
 #endif
