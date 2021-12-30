@@ -26,6 +26,7 @@ extern int errno;
 
 struct server_queue {
   int shm_fd;
+  sem_t freeing;
   sem_t mutex;
   sem_t empty;
   sem_t full;
@@ -117,6 +118,10 @@ int disconnect(server_queue *queue_p) {
 }
 
 int free_server_queue(server_queue *queue_p) {
+  // Attend la fin des modifications
+  if (sem_wait(&queue_p->mutex) == -1) {
+    return SEMAPHORE_ERROR;
+  }
   // Ferme le fichier
   if (close(queue_p->shm_fd) < 0) {
     return SHM_ERROR;

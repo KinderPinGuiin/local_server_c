@@ -139,6 +139,10 @@ int list_dispose(list *list_p) {
   if (list_p == NULL) {
     return NULL_ELEM;
   }
+  // Attend au cas où la liste soit en train d'être modifiée
+  if (sem_wait(&list_p->mutex) < 0) {
+    return SEM_ERROR;
+  }
   clist *cell = list_p->head;
   clist *next_cell;
   while (cell != NULL) {
