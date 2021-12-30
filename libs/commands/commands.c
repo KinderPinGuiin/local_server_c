@@ -40,7 +40,7 @@ static const char *COMMANDS[] = {
   // Valeur particulière pour le retour de is_command_available
   NULL,
   // Commandes usuelles
-  "ls", "ps", "pwd", "rm", "exit",
+  "ls", "ps", "pwd", "rm", "touch", "mkdir", "exit",
   // Commandes personnalisées
   "help", "info", "ccp", "lsl", "uinfo"
 };
@@ -50,7 +50,9 @@ static const char *COMMANDS[] = {
  */
 static const int TYPES[] = {
   INVALID_CMD,
-  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
+  // Commandes usuelles
+  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
+  // Commandes personnalisées
   CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
@@ -62,14 +64,15 @@ static int exec_help(shm_request *shm_req, size_t argc, const char **argv);
 static int exec_info(shm_request *shm_req, size_t argc, const char **argv);
 static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv);
 static int exec_lsl(shm_request *shm_req, size_t argc, const char **argv);
+static int exec_uinfo(shm_request *shm_req, size_t argc, const char **argv);
 
 /**
  * Fonctions de COMMANDS[i] pour tout i allant de 0 à |COMMAND|.
  */
 static int (* FUNCTIONS[])(shm_request *, size_t, const char **) = {
   NULL,
-  NULL, NULL, NULL, NULL,
-  exec_help, exec_info, exec_ccp, exec_lsl
+  NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+  exec_help, exec_info, exec_ccp, exec_lsl, exec_uinfo
 };
 
 void print_commands() {
@@ -593,3 +596,24 @@ static int ccp(int fd_src, int fd_dest, off_t max) {
 
 // ---------- Commande : uinfo ----------
 
+static int exec_uinfo(shm_request *shm_req, size_t argc, const char **argv) {
+  if (argc && argv) { /* Enlève le warn */ }
+  struct passwd *result;
+  // Récupère les données de l'utilisateur
+  if ((result = getpwuid(shm_req->uid)) == NULL) {
+    fprintf(stderr, 
+        "Une erreur est survenue lors de la récupération de vos données\n");
+  }
+  // Affiche les données
+  fprintf(stdout, 
+      "Nom d'utilisateur : %s\n"
+      "UID : %d\n"
+      "GID : %d\n"
+      "Répertoire home : %s\n"
+      "Shell : %s\n",
+      result->pw_name, result->pw_uid, result->pw_gid,
+      result->pw_dir, result->pw_shell
+  );
+
+  return 1;
+}
