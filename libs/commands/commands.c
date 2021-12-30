@@ -25,6 +25,14 @@
 #define USUAL_CMD 1
 #define CUSTOM_CMD 2
 
+/*
+ * Variables externes
+ */
+
+extern char *optarg;
+extern int optind, optopt;
+extern int errno;
+
 /**
  * Les différentes commandes disponibles
  */
@@ -32,7 +40,7 @@ static const char *COMMANDS[] = {
   // Valeur particulière pour le retour de is_command_available
   NULL,
   // Commandes usuelles
-  "ls", "ps", "pwd", "exit",
+  "ls", "ps", "pwd", "rm", "exit",
   // Commandes personnalisées
   "help", "info", "ccp", "lsl"
 };
@@ -42,7 +50,7 @@ static const char *COMMANDS[] = {
  */
 static const int TYPES[] = {
   INVALID_CMD,
-  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
+  USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD, USUAL_CMD,
   CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD, CUSTOM_CMD
 };
 
@@ -453,7 +461,130 @@ static void get_color(char *buffer, size_t n, char t) {
 
 // ---------- Commande : ccp ----------
 
+// Détermine la position courante du fichier lié au descripteur x.
+#define TELL(x) (lseek(x, 0, SEEK_CUR))
+
+// Détermine la taille du fichier lié au descripteur x
+#define SIZE(x) (lseek(x, 0, SEEK_END));
+
+// Replace le curseur du fichier lié au descripteur x au début
+#define RESET(x) (lseek(x, 0, SEEK_CUR));
+
+#define READ_ERROR -1
+#define WRITE_ERROR -2
+
+/*
+ * Copie-colle le fichier de descripteur fd_src dans fd_dest jusqu'à max.
+ * Renvoie 0 si tout s'est bien passé, READ_ERROR en cas d'erreur de lecture,
+ * WRITE_ERROR en cas d'erreur d'écriture. Si max vaut -1 alors on copiera
+ * tout le fichier.
+ */
+int ccp(int fd_src, int fd_dest, long max);
+
 static int exec_ccp(shm_request *shm_req, size_t argc, const char **argv) {
   if (shm_req) { /* Enlève le warn */ }
-  return fprintf(stdout, "Commande custom : %zu %s\n", argc, argv[0]);
+	if (argc == 1) {
+		fprintf(stderr, 
+        "Arguments manquants, tapez help pour plus d'information\n");
+		return EXEC_ERROR;
+	}
+	// Analyse des arguments
+	char *src_file;
+	char *dest_file;
+	int src_mode = 0;
+	int dest_mode = O_TRUNC;
+	long bvalue = 0;
+	long evalue = -1;	
+	char c;
+	while ((c = (char) getopt((int) argc, (char *const *) argv, "f:d:vab:e:")) != -1) {
+		switch (c) {
+			case 'f':
+				src_file = optarg;
+				break;
+			case 'd':
+				dest_file = optarg;
+				break;
+			case 'v':
+				src_mode = O_EXCL;
+				break;
+			case 'a':
+				dest_mode = O_APPEND;
+				break;
+			case 'b':
+				bvalue = atol(optarg);
+				if (bvalue < 0) {
+					fprintf(stderr, "Value of -b must be positive.\n");
+					return EXEC_ERROR;
+				}
+				break;
+			case 'e':
+				evalue = atol(optarg);
+				if (evalue < bvalue) {
+					fprintf(stderr, "Value of -e must be positive and greater than -b.\n");
+					return EXEC_ERROR;
+				}
+				break;
+			case '?':
+				if (optopt == 'f' || optopt == 'd' || optopt == 'b' || optopt == 'e') {
+					fprintf(stderr, "Option -%c need value.\n", optopt);
+				} else if (isprint(optopt)) {
+					fprintf (stderr, "Unknown option `-%c'.\n", optopt);
+				} else {
+					fprintf(stderr, "Unknown option, use -h for help");
+				}
+				return EXEC_ERROR;
+				break;
+			default:
+				abort();
+		}
+	}
+	// Ouvre le fichier source et seek
+	int src_fd;
+	if ((src_fd = open(src_file, O_CREAT | src_mode, S_IRWXU)) == -1) {
+		fprintf(stderr, "Cannot open %s.\n", src_file);
+		return EXEC_ERROR;
+	}
+	if (lseek(src_fd, (off_t) bvalue, SEEK_SET) == -1) {
+		fprintf(stderr, "Cannot seek file to value %ld", bvalue);
+		close(src_fd);
+		return EXEC_ERROR;
+	}
+	// Ouvre le fichier de destination
+	int dest_fd;
+	if ((dest_fd = open(dest_file, O_CREAT | O_WRONLY | dest_mode, S_IRWXU)) == -1) {
+		fprintf(stderr, "Cannot open %s.\n", dest_file);
+		close(src_fd);
+		return EXEC_ERROR;
+	}
+	// Lance la copie
+	int ccp_r = ccp(src_fd, dest_fd, (off_t) evalue);
+	if (ccp_r != 0) {
+		fprintf(stderr, 
+		  (ccp_r == READ_ERROR) ? "Read error.\n" : "Write error.\n");
+		close(src_fd);
+		close(dest_fd);
+		return EXEC_ERROR;
+	}
+	
+	return 1;
 }
+
+int ccp(int fd_src, int fd_dest, off_t max) {
+	char buffer[1];
+	ssize_t readed;
+	while (max == -1 || TELL(fd_dest) != max) {
+		if ((readed = read(fd_src, buffer, 1)) == -1) {
+			return READ_ERROR;
+		} else if (readed == 0) {
+			break;
+		}
+		if (write(fd_dest, buffer, 1) == -1) {
+			return WRITE_ERROR;
+		}
+	}
+	
+	return 0;
+}
+
+// ---------- Commande : uinfo ----------
+
