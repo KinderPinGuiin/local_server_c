@@ -9,6 +9,8 @@
 #define CONNECTION_H
 
 #include <limits.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 // Nom du SHM pour se mettre en liste d'attente sur le serveur
 #define SHM_NAME "/shm_server_963852741"
@@ -67,7 +69,7 @@ server_queue *connect(const char *shm_name);
  */
 int disconnect(server_queue *queue_p);
 
-/**.
+/**
  * Libère toutes les ressources associées à la file pointée par server_queue.
  * 
  * @param {server_queue *} La file à libérer.
@@ -83,6 +85,7 @@ int free_server_queue(server_queue *queue_p);
 typedef struct shm_request {
   char request_pipe[NAME_MAX + 1];
   char response_pipe[NAME_MAX + 1];
+  pid_t pid;
 } shm_request;
 
 /**

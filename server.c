@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
+#include "libs/list/list.h"
 
 /*
  * Codes d'erreur
@@ -44,23 +45,43 @@ void *handle_request(void *request);
  */
 int allocate_request_ressources(shm_request *request);
 
+int request_cmp(shm_request *a, shm_request *b);
+
 /**
  * Libère les ressources du serveur en cas d'interruption par un signal.
  */
-void sig_free_server(int signum);
+void sig_free(int signum);
+
+/**
+ * Libère les clients connectés au serveur en envoyant une réponse de 
+ * terminaison.
+ * 
+ * @param {shm_request *} La requête du client à libérer.
+ * @param {int} L'accumulateur.
+ * @return {int} 1 si tous les clients ont été libérés et -1 sinon.
+ */
+int free_online_clients(shm_request *req, int acc);
 
 /*
  * Variables globales
  */
 
+// File de requêtes de connexion au serveur
 server_queue *server_q;
+// Liste contenant les clients actuellement connectés au serveur ayant un
+// thread alloué.
+list *client_list;
 
-int main(void) {
-  // Gestion des options (à la fin)
-  
+int main(void) {  
+  // Création de la liste des clients où l'on stockera les pipes de réponse
+  client_list = init_list((int (*)(void *, void *)) request_cmp);
+  if (client_list == NULL) {
+    fprintf(stderr, "Impossible d'intialiser la liste des clients\n");
+    return EXIT_FAILURE;
+  }
   // Gestion des signaux
   struct sigaction action;
-  action.sa_handler = sig_free_server;
+  action.sa_handler = sig_free;
   action.sa_flags = 0;
   if (sigfillset(&action.sa_mask) == -1) {
     perror("Erreur lors de la création du masque des signaux bloqués ");
@@ -100,22 +121,21 @@ int main(void) {
       fprintf(stderr, "Impossible de traiter la requête\n");
       return EXIT_FAILURE;
     }
-    fprintf(stderr, "Une connexion a été établie avec un client\n");
+    fprintf(stdout, "Une connexion a été établie avec un client\n");
   }
 
   return EXIT_SUCCESS;
 }
 
 int allocate_request_ressources(shm_request *request) {
-  // Duplique la requête pour pas qu'elle ne soit perdue lors de son traitement
-  shm_request *request_cpy = malloc(sizeof(shm_request));
-  if (request_cpy == NULL) {
+  // Ajoute la requête du client à la liste
+  shm_request *r = list_add(client_list, request, sizeof(*request));
+  if (r == NULL) {
     return NOT_ENOUGH_MEMORY;
   }
-  memcpy(request_cpy, request, sizeof(shm_request));
   // Créer le thread et passe la requête dupliquée en paramètre et le détache
   pthread_t request_thread;
-  if (pthread_create(&request_thread, NULL, handle_request, request_cpy) != 0) {
+  if (pthread_create(&request_thread, NULL, handle_request, r) != 0) {
     return THREAD_ERROR;
   }
   if (pthread_detach(request_thread) != 0) {
@@ -136,24 +156,13 @@ void *handle_request(void *request) {
   }
   int tube[2];
   while (strcmp(req_buffer, "exit") != 0) {
-    // Création d'un tube permettant de relier la sortie de la commande à
-    // la réponse
-    if (pipe(tube) == -1) {
-      perror("pipe ");
-      send_response(req->response_pipe, "Erreur lors de la liaison entre la "
-          "commande et la réponse\n");
-      return NULL;
-    }
-    if (dup2(tube[1], STDOUT_FILENO) < 0) {
-      perror("dup2 ");
-      send_response(req->response_pipe, "Erreur lors de la liaison entre la "
-          "commande et la réponse\n");
-      return NULL;
-    }
-    // On peut avoir au maximum strlen(buffer) tokens.
-    // On rajoute 1 afin de pouvoir ajouter le NULL.
     ssize_t n;
     char res_buffer[MAX_RESPONSE_LENGTH + 1];
+    if (pipe(tube) < 0) {
+      perror("pipe ");
+      fprintf(stderr, "Impossible de relier la commande et la réponse\n");
+      return NULL;
+    }
     switch (fork()) {
       case -1:
         perror("fork ");
@@ -161,36 +170,46 @@ void *handle_request(void *request) {
             "commande\n");
         return NULL;
       case 0:
+        if (dup2(tube[1], STDOUT_FILENO) < 0) {
+          perror("dup2 ");
+          fprintf(stderr, "Impossible de relier la commande et la réponse\n");
+          return NULL;
+        }
+        if (dup2(tube[1], STDERR_FILENO) < 0) {
+          perror("dup2 ");
+          fprintf(stderr, "Impossible de relier la commande et la réponse\n");
+          return NULL;
+        }
         if (close(tube[0]) < 0) {
-          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
+          perror("close ");
+          fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
           return NULL;
         }
         if (exec_cmd(req_buffer) < 0) {
-          fprintf(stdout, "Erreur lors de l'exécution de la commande\n");
+          fprintf(stderr, "Erreur lors de l'exécution de la commande.\n");
         }
         return NULL;
       default:
-        // Lit ce qu'a écrit le programme sur la sortie standard et stock le
-        // résultat dans un buffer
         if (close(tube[1]) < 0) {
           perror("close ");
+          send_response(req->response_pipe, "Erreur lors de l'exécution "
+              "de la commande\n");
         }
         // Attend la mort du processus enfant
         wait(NULL);
         if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
-          perror("read");
-          send_response(req->response_pipe, "Erreur lors de la liaison entre "
-              "la commande et la réponse\n");
+          perror("read ");
+          send_response(req->response_pipe, "Erreur lors de la liaison "
+              "entre la commande et la réponse\n");
         } else {
           res_buffer[n] = '\0';
         }
         if (close(tube[0]) < 0) {
-          perror("Impossible de fermer le tube 0 : ");
+          perror("Impossible de fermer tube 0 : ");
           return NULL;
         }
-        // Envoie le contenu du buffer au client
         if (send_response(req->response_pipe, res_buffer) < 0) {
-          perror("Impossible d'envoyer la réponse au client ");
+          perror("Impossible d'envoyer la réponse au client");
         }
     }
     if (listen_request(req->request_pipe, req_buffer) < 0) {
@@ -202,20 +221,50 @@ void *handle_request(void *request) {
   if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
-  // Libère les ressources allouées par la requête
-  free(req);
+  if (list_remove(client_list, req) <= 0) {
+    fprintf(stderr, 
+        "Impossible d'enlever le client %d de la liste des clients\n", 
+        req->pid);
+  }
   return NULL;
 }
 
-void sig_free_server(int signum) {
+int request_cmp(shm_request *a, shm_request *b) {
+  if (a->pid > b->pid) {
+    return 1;
+  }
+  return a->pid == b->pid ? 0 : -1;
+}
+
+void sig_free(int signum) {
+  int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
-    free_server_queue(server_q);
+    int r = list_apply(client_list, (int (*)(void *, int)) free_online_clients);
+    if (r < 0) {
+      fprintf(stderr, "Tous les clients n'ont pas pu être libérés\n");
+      status = EXIT_FAILURE;
+    }
+    if (list_dispose(client_list) < 0) {
+      fprintf(stderr, "Impossible de libérer la liste des clients\n");
+      status = EXIT_FAILURE;
+    }
   } else {
-    fprintf(stderr, "Interruption du serveur suite à un signal innatendu : %d\n",
-      signum);
-    free_server_queue(server_q);
+    fprintf(stderr, 
+        "Interruption du serveur suite à un signal innatendu : %d\n", signum);
+  }
+  if (free_server_queue(server_q) < 0) {
+    perror("Impossible de libérer la SHM ");
+    status = EXIT_FAILURE;
   }
 
-  exit(EXIT_SUCCESS);
+  exit(status);
+}
+
+int free_online_clients(shm_request *req, int acc) {
+  if (kill(req->pid, SIGUSR1) < 0) {
+    acc = -1;
+  }
+
+  return acc < 0 ? -1 : 1;
 }
