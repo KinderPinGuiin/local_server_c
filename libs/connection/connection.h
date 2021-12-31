@@ -33,6 +33,7 @@
 #define SEMAPHORE_ERROR -3
 #define SERVER_IS_FULL -4
 #define PIPE_ERROR -5
+#define MEMORY_ERROR -6
 
 /*
  * Manipulation de la queue de connexion au serveur
@@ -197,7 +198,7 @@ int send_response(const char *id, const char *msg);
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int listen_response(response_fifo *res_fifo, char *buffer);
+int listen_response(response_fifo *res_fifo, char **buffer);
 
 /**
  * Ferme la file de réponse associée à *req. Renvoie 1 en cas de succès

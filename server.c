@@ -70,7 +70,7 @@ int free_online_clients(shm_request *req, int acc);
 server_queue *server_q;
 // Liste contenant les clients actuellement connectés au serveur ayant un
 // thread alloué.
-list *client_list;
+list *client_list = NULL;
 
 int main(void) {  
   // Création de la liste des clients où l'on stockera les pipes de réponse
@@ -153,22 +153,24 @@ void *handle_request(void *request) {
     perror("Erreur lors de la lecture d'une requete ");
     send_response(req->response_pipe, "Erreur lors de la récéption de la "
         "requête\n");
+    goto remove;
   }
   int tube[2];
   while (strcmp(req_buffer, "exit") != 0) {
-    ssize_t n;
-    char res_buffer[MAX_RESPONSE_LENGTH + 1];
     if (pipe(tube) < 0) {
       perror("pipe ");
       fprintf(stderr, "Impossible de relier la commande et la réponse\n");
-      return NULL;
+      goto remove;
     }
+    char *res_buffer = NULL;
+    ssize_t n = 0;
+    size_t total = 0;
     switch (fork()) {
       case -1:
         perror("fork ");
         send_response(req->response_pipe, "Erreur lors de l'exécution de la "
             "commande\n");
-        return NULL;
+        goto remove;
       case 0:
         if (dup2(tube[1], STDOUT_FILENO) < 0) {
           perror("dup2 ");
@@ -197,19 +199,28 @@ void *handle_request(void *request) {
         }
         // Attend la mort du processus enfant
         wait(NULL);
-        if ((n = read(tube[0], res_buffer, MAX_RESPONSE_LENGTH)) < 0) {
+        do {
+          total += (size_t) n;
+          res_buffer = realloc(res_buffer, total + PIPE_BUF + 1);
+          if (res_buffer == NULL) {
+            send_response(req->response_pipe, "Erreur lors de l'exécution "
+                "de la commande\n");
+            goto remove;
+          }
+        } while ((n = read(tube[0], res_buffer + total, PIPE_BUF)) > 0);
+        if (n == -1) {
           perror("read ");
           send_response(req->response_pipe, "Erreur lors de la liaison "
               "entre la commande et la réponse\n");
-        } else {
-          res_buffer[n] = '\0';
         }
+        res_buffer[total] = '\0';
         if (close(tube[0]) < 0) {
           perror("Impossible de fermer tube 0 : ");
-          return NULL;
+          goto remove;
         }
         if (send_response(req->response_pipe, res_buffer) < 0) {
           perror("Impossible d'envoyer la réponse au client");
+          goto remove;
         }
     }
     if (listen_request(req->request_pipe, req_buffer) < 0) {
@@ -217,10 +228,12 @@ void *handle_request(void *request) {
       send_response(req->response_pipe, "Erreur lors de la récéption de la "
           "requête\n");
     }
+    free(res_buffer);
   }
   if (send_response(req->response_pipe, "Déconnexion du serveur...\n") < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
+remove:
   if (list_remove(client_list, req) <= 0) {
     fprintf(stderr, 
         "Impossible d'enlever le client %d de la liste des clients\n", 

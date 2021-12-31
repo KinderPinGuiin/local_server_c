@@ -95,11 +95,12 @@ int main(int argc, char **argv) {
   }
   char s[MAX_COMMAND_LENGTH + 1];
   do {
+    char *res_buffer = NULL;
     fprintf(stdout, "> ");
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
       if (send_request(req_fifo, "exit") < 0 
-          || listen_response(res_fifo, s) < 0) {
+          || listen_response(res_fifo, &res_buffer) < 0) {
         fprintf(stderr, "Impossible d'échanger une requête de fin de "
             "transmission avec le serveur");
       } else {
@@ -123,13 +124,13 @@ int main(int argc, char **argv) {
     if (send_request(req_fifo, s) < 0) {
       perror("Impossible d'envoyer la requête");
     }
-    char res_buffer[MAX_RESPONSE_LENGTH + 1];
     // Ecoute la réponse du serveur
-    if (listen_response(res_fifo, res_buffer) < 0) {
+    if (listen_response(res_fifo, &res_buffer) < 0) {
       perror("Impossible de recevoir la réponse du serveur ");
     } else {
-      fprintf(stdout, "%s\n", res_buffer);
+      fprintf(stdout, "Réponse : %s\n", res_buffer);
     }
+    free(res_buffer);
   } while (strcmp(s, "exit") != 0);
   // Libère les ressources en se déconnectant
 free:
@@ -153,9 +154,9 @@ void sig_disconnect(int signum) {
   int r = EXIT_SUCCESS;  
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
-    char s[MAX_RESPONSE_LENGTH + 1];
+    char *s;
     if (send_request(req_fifo, "exit") < 0 
-        || listen_response(res_fifo, s) < 0) {
+        || listen_response(res_fifo, &s) < 0) {
       fprintf(stderr, "Impossible d'échanger une requête de fin de "
           "transmission avec le serveur");
       r = EXIT_FAILURE;

@@ -299,7 +299,8 @@ struct response_fifo {
 };
 
 typedef struct response {
-  char msg[MAX_RESPONSE_LENGTH + 1];
+  size_t size;
+  char msg[];
 } response;
 
 response_fifo *init_response_fifo(const char *id) {
@@ -325,13 +326,25 @@ int send_response(const char *id, const char *msg) {
   if ((pipe_fd = open(id, O_WRONLY)) < 0) {
     return PIPE_ERROR;
   }
-  // Créé la réponse
-  response res = { .msg = "" };
-  strncpy(res.msg, msg, MAX_RESPONSE_LENGTH);
-  // Envoie la réponse
+  // Crée la réponse
+  response *res = malloc(sizeof(*res) + strlen(msg) + 1);
+  if (res == NULL) {
+    return MEMORY_ERROR;
+  }
+  res->size = strlen(msg) + 1;
+  for (size_t i = 0; i < res->size; ++i) {
+    res->msg[i] = msg[i];
+  }
+  // Envoi la réponse
   ssize_t n;
-  if ((n = write(pipe_fd, &res, sizeof(response))) < 0) { // SIGPIPE
-    perror("write ");
+  size_t total = 0;
+  while (
+    (n = write(pipe_fd, res + total, sizeof(*res) + res->size - total)) > 0
+  ) {
+    total += (size_t) n;
+  }
+  free(res);
+  if (n < 0) {
     return PIPE_ERROR;
   }
   if (close(pipe_fd) < 0) {
@@ -341,8 +354,8 @@ int send_response(const char *id, const char *msg) {
   return 1;
 }
 
-int listen_response(response_fifo *res_fifo, char *buffer) {
-  if (res_fifo == NULL || buffer == NULL) {
+int listen_response(response_fifo *res_fifo, char **buffer) {
+  if (res_fifo == NULL) {
     return INVALID_POINTER;
   }
   // Ouvre le tube de réponse
@@ -350,14 +363,33 @@ int listen_response(response_fifo *res_fifo, char *buffer) {
   if ((pipe_fd = open(res_fifo->id, O_RDONLY)) < 0) {
     return PIPE_ERROR;
   }
-  // Lit la réponse
-  response res;
+  // Lit la taille de la réponse
+  size_t size;
   ssize_t n;
-  if ((n = read(pipe_fd, &res, sizeof(response))) < 0) {
+  if ((n = read(pipe_fd, &size, sizeof(size_t))) < 0) {
     return PIPE_ERROR;
   }
+  response *res = malloc(sizeof(*res) + size);
+  if (res == NULL) {
+    return MEMORY_ERROR;
+  }
+  res->size = size;
+  // Lit le contenu de la réponse
+  size_t total = 0;
+  while (total < size) {
+    if ((n = read(pipe_fd, &res->msg[total], size - total)) < 0) {
+      free(res);
+      return PIPE_ERROR;
+    }
+    total += (size_t) n;
+  }
   // Copie le résultat de la commande dans le buffer
-  strncpy(buffer, res.msg, MAX_RESPONSE_LENGTH + 1);
+  *buffer = malloc(size);
+  if (*buffer == NULL) {
+    return MEMORY_ERROR;
+  }
+  strncpy(*buffer, res->msg, res->size);
+  free(res);
   // Ferme et supprime le tube
   if (close(pipe_fd) < 0) {
     return PIPE_ERROR;
