@@ -285,6 +285,7 @@ void sig_free(int signum) {
     }
     if (free_parser(config) < 0) {
       fprintf(stderr, "Impossible de free le parseur\n");
+      status = EXIT_FAILURE;
     }
   } else {
     fprintf(stderr, 
