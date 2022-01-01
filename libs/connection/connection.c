@@ -26,27 +26,27 @@ extern int errno;
 
 struct server_queue {
   int shm_fd;
-  sem_t freeing;
+  size_t nb_slots;
   sem_t mutex;
   sem_t empty;
   sem_t full;
   size_t length; // Le nombre d'éléments dans le tampon
   size_t head;   // Position d'ajout dans le tampon
   size_t tail;   // Position de suppression dans le tampon
-  shm_request buffer[MAX_SLOT];
+  shm_request buffer[];
 };
 
-server_queue *init_server_queue() {
+server_queue *init_server_queue(size_t max_slot) {
   // Création du SHM
   int shm_fd = shm_open(SHM_NAME, O_RDWR | O_CREAT | O_EXCL,
       S_IRUSR | S_IWUSR);
   if (shm_fd < 0) {
     return NULL;
   }
-  if (ftruncate(shm_fd, sizeof(server_queue)) < 0) {
+  if (ftruncate(shm_fd, (off_t) (sizeof(server_queue) + sizeof(shm_request) * max_slot)) < 0) {
     goto err;
   }
-  server_queue *server_q = mmap(NULL, sizeof(server_queue), 
+  server_queue *server_q = mmap(NULL, sizeof(server_queue) + sizeof(shm_request) * max_slot, 
     PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (server_q == MAP_FAILED) {
     goto err;
@@ -56,12 +56,13 @@ server_queue *init_server_queue() {
   if (sem_init(&server_q->mutex, 1, 1) == -1) {
     return NULL;
   }
-  if (sem_init(&server_q->empty, 1, MAX_SLOT) == -1) {
+  if (sem_init(&server_q->empty, 1, (unsigned int) max_slot) == -1) {
     return NULL;
   }
   if (sem_init(&server_q->full, 1, 0) == -1) {
     return NULL;
   }
+  server_q->nb_slots = max_slot;
   server_q->length = 0;
   server_q->head = 0;
   server_q->tail = 0;
@@ -166,7 +167,7 @@ int send_shm_request(server_queue *server_q, const char request_pipe_name[],
   strncpy(request.response_pipe, response_pipe_name, NAME_MAX);
   // Ajoute la requête à la file des connexions entrantes
   server_q->buffer[server_q->head] = request;
-  server_q->head = (server_q->head + 1) % MAX_SLOT;
+  server_q->head = (server_q->head + 1) % server_q->nb_slots;
   server_q->length += 1;
   // Donne le feu vert aux autres processus
   if (sem_post(&server_q->mutex) == -1) {
@@ -193,7 +194,7 @@ int fetch_shm_request(server_queue *server_q, int (*apply)(shm_request *)) {
   // Applique la fonction apply sur la requête la plus ancienne
   int r = apply(&server_q->buffer[server_q->tail]);
   // Change le pointeur de queue de la file
-  server_q->tail = (server_q->tail + 1) % MAX_SLOT;
+  server_q->tail = (server_q->tail + 1) % server_q->nb_slots;
   server_q->length -= 1;
   // Donne le feu vert aux autres processus
   if (sem_post(&server_q->mutex) == -1) {

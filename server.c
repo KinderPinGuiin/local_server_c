@@ -46,6 +46,9 @@ void *handle_request(void *request);
  */
 int allocate_request_ressources(shm_request *request);
 
+/**
+ * Compare 2 requêtes.
+ */
 int request_cmp(shm_request *a, shm_request *b);
 
 /**
@@ -122,7 +125,9 @@ int main(void) {
   }
 
   // Mise en place de la mémoire partagée et la remplit avec une file
-  server_q = init_server_queue();
+  int nb_slots;
+  get(config, "slots", &nb_slots);
+  server_q = init_server_queue((size_t) nb_slots);
   if (server_q == NULL) {
     perror("Une erreur est survenue lors du chargement du SHM ");
     return EXIT_FAILURE;
@@ -277,6 +282,9 @@ void sig_free(int signum) {
     if (list_dispose(client_list) < 0) {
       fprintf(stderr, "Impossible de libérer la liste des clients\n");
       status = EXIT_FAILURE;
+    }
+    if (free_parser(config) < 0) {
+      fprintf(stderr, "Impossible de free le parseur\n");
     }
   } else {
     fprintf(stderr, 
