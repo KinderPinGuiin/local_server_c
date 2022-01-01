@@ -11,6 +11,7 @@
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
 #include "libs/list/list.h"
+#include "libs/yml_parser/yml_parser.h"
 
 /*
  * Codes d'erreur
@@ -71,12 +72,27 @@ server_queue *server_q;
 // Liste contenant les clients actuellement connectés au serveur ayant un
 // thread alloué.
 list *client_list = NULL;
+// Parseur de fichier yml pour la configuration du serveur
+yml_parser *config = NULL;
 
 int main(void) {  
   // Création de la liste des clients où l'on stockera les pipes de réponse
   client_list = init_list((int (*)(void *, void *)) request_cmp);
   if (client_list == NULL) {
     fprintf(stderr, "Impossible d'intialiser la liste des clients\n");
+    return EXIT_FAILURE;
+  }
+  // Chargement de la configuration
+  config = init_yml_parser("./conf/server.yml", NULL);
+  if (config == NULL) {
+    fprintf(stderr, "Impossible de créer le parseur yml\n");
+    list_dispose(client_list);
+    return EXIT_FAILURE;
+  }
+  if (exec_parser(config) < 0) {
+    fprintf(stderr, "Impossible de charger la configuration\n");
+    list_dispose(client_list);
+    free_parser(config);
     return EXIT_FAILURE;
   }
   // Gestion des signaux

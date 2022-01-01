@@ -7,7 +7,8 @@ LIBS = libs
 CONNECTION = $(LIBS)/connection/connection.o
 COMMANDS = $(LIBS)/commands/commands.o
 LIST = $(LIBS)/list/list.o
-objects_server = server.o $(CONNECTION) $(COMMANDS) $(LIST)
+YML = $(LIBS)/yml_parser/yml_parser.o
+objects_server = server.o $(CONNECTION) $(COMMANDS) $(LIST) $(YML)
 objects_client = client.o $(CONNECTION) $(COMMANDS)
 executable_server = server
 executable_client = client
@@ -26,5 +27,6 @@ $(executable_client): $(objects_client)
 connection.o: connection.c
 commands.o: commands.c
 list.o: list.c
+yml_parser.o: yml_parser.c
 server.o: server.c
 client.o: client.c
