@@ -193,6 +193,9 @@ yml_parser *init_yml_parser(const char *path, int *error) {
 }
 
 int exec_parser(yml_parser *parser) {
+  if (sem_wait(&parser->mutex) < 0) {
+    return YML_SEM_ERROR;
+  }
   if (parser->executed == EXECUTED) {
     return YML_ALREADY_EXECUTED;
   }
@@ -210,6 +213,9 @@ int exec_parser(yml_parser *parser) {
     return -1;
   }
   parser->executed = EXECUTED;
+  if (sem_post(&parser->mutex) < 0) {
+    return YML_SEM_ERROR;
+  }
 
   return 1;
 }
@@ -233,6 +239,9 @@ int get(yml_parser *parser, const char *key, void *buffer) {
 int free_parser(yml_parser *parser) {
   if (parser == NULL) {
     return YML_INVALID_POINTER;
+  }
+  if (sem_wait(&parser->mutex) < 0) {
+    return YML_SEM_ERROR;
   }
   free_hash_map(parser->map);
   free(parser->content);
