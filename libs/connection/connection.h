@@ -15,9 +15,6 @@
 // Nom du SHM pour se mettre en liste d'attente sur le serveur
 #define SHM_NAME "/shm_server_963852741"
 
-// Le nombre maximum de requête simultannées possible.
-#define MAX_SLOT 25
-
 // Taille maximale d'une commande
 #define MAX_COMMAND_LENGTH 256
 
@@ -47,7 +44,7 @@ typedef struct server_queue server_queue;
  * @return {server_queue *} Le pointeur vers la file du serveur ou NULL en cas
  *                          d'erreur. L'erreur peut-être récupérée avec perror.
  */
-server_queue *init_server_queue();
+server_queue *init_server_queue(size_t max_slot);
 
 /**
  * Etablit un lien avec la file de connexion du serveur shm_name et renvoie

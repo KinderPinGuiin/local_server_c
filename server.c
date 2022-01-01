@@ -122,7 +122,9 @@ int main(void) {
   }
 
   // Mise en place de la mémoire partagée et la remplit avec une file
-  server_q = init_server_queue();
+  int nb_slots;
+  get(config, "slots", &nb_slots);
+  server_q = init_server_queue((size_t) nb_slots);
   if (server_q == NULL) {
     perror("Une erreur est survenue lors du chargement du SHM ");
     return EXIT_FAILURE;
