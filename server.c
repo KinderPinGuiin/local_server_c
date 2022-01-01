@@ -274,22 +274,22 @@ void sig_free(int signum) {
   int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
-    int r = list_apply(client_list, (int (*)(void *, int)) free_online_clients);
-    if (r < 0) {
-      fprintf(stderr, "Tous les clients n'ont pas pu être libérés\n");
-      status = EXIT_FAILURE;
-    }
-    if (list_dispose(client_list) < 0) {
-      fprintf(stderr, "Impossible de libérer la liste des clients\n");
-      status = EXIT_FAILURE;
-    }
-    if (free_parser(config) < 0) {
-      fprintf(stderr, "Impossible de free le parseur\n");
-      status = EXIT_FAILURE;
-    }
   } else {
     fprintf(stderr, 
         "Interruption du serveur suite à un signal innatendu : %d\n", signum);
+  }
+  int r = list_apply(client_list, (int (*)(void *, int)) free_online_clients);
+  if (r < 0) {
+    fprintf(stderr, "Tous les clients n'ont pas pu être libérés\n");
+    status = EXIT_FAILURE;
+  }
+  if (list_dispose(client_list) < 0) {
+    fprintf(stderr, "Impossible de libérer la liste des clients\n");
+    status = EXIT_FAILURE;
+  }
+  if (free_parser(config) < 0) {
+    fprintf(stderr, "Impossible de free le parseur\n");
+    status = EXIT_FAILURE;
   }
   if (free_server_queue(server_q) < 0) {
     perror("Impossible de libérer la SHM ");
