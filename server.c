@@ -46,6 +46,9 @@ void *handle_request(void *request);
  */
 int allocate_request_ressources(shm_request *request);
 
+/**
+ * Compare 2 requêtes.
+ */
 int request_cmp(shm_request *a, shm_request *b);
 
 /**
@@ -279,6 +282,9 @@ void sig_free(int signum) {
     if (list_dispose(client_list) < 0) {
       fprintf(stderr, "Impossible de libérer la liste des clients\n");
       status = EXIT_FAILURE;
+    }
+    if (free_parser(config) < 0) {
+      fprintf(stderr, "Impossible de free le parseur\n");
     }
   } else {
     fprintf(stderr, 

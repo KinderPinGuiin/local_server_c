@@ -40,7 +40,9 @@ typedef struct server_queue server_queue;
 
 /**
  * Alloue en mémoire partagée la file de connexion du serveur et la renvoie.
+ * La file contiendra max_slot slots.
  * 
+ * @param {size_t} Le nombre de slots de la file.
  * @return {server_queue *} Le pointeur vers la file du serveur ou NULL en cas
  *                          d'erreur. L'erreur peut-être récupérée avec perror.
  */
