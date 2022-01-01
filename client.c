@@ -102,7 +102,7 @@ int main(int argc, char **argv) {
       if (send_request(req_fifo, "exit") < 0 
           || listen_response(res_fifo, &res_buffer) < 0) {
         fprintf(stderr, "Impossible d'échanger une requête de fin de "
-            "transmission avec le serveur");
+            "transmission avec le serveur\n");
       } else {
         fprintf(stdout, "%s\n", s);
       }
@@ -128,7 +128,7 @@ int main(int argc, char **argv) {
     if (listen_response(res_fifo, &res_buffer) < 0) {
       perror("Impossible de recevoir la réponse du serveur ");
     } else {
-      fprintf(stdout, "Réponse : %s\n", res_buffer);
+      fprintf(stdout, "%s\n", res_buffer);
     }
     free(res_buffer);
   } while (strcmp(s, "exit") != 0);

@@ -36,6 +36,7 @@ struct server_queue {
   shm_request buffer[];
 };
 
+
 server_queue *init_server_queue(size_t max_slot) {
   // Création du SHM
   int shm_fd = shm_open(SHM_NAME, O_RDWR | O_CREAT | O_EXCL,
@@ -43,11 +44,13 @@ server_queue *init_server_queue(size_t max_slot) {
   if (shm_fd < 0) {
     return NULL;
   }
-  if (ftruncate(shm_fd, (off_t) (sizeof(server_queue) + sizeof(shm_request) * max_slot)) < 0) {
+  if (ftruncate(shm_fd, 
+      (off_t) (sizeof(server_queue) + sizeof(shm_request) * max_slot)) < 0) {
     goto err;
   }
-  server_queue *server_q = mmap(NULL, sizeof(server_queue) + sizeof(shm_request) * max_slot, 
-    PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+  server_queue *server_q = mmap(NULL, 
+      sizeof(server_queue) + sizeof(shm_request) * max_slot, 
+      PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (server_q == MAP_FAILED) {
     goto err;
   }
@@ -92,8 +95,23 @@ server_queue *connect(const char *shm_name) {
   if (shm_fd < 0) {
     return NULL;
   }
+  // Effectue une première projection afin de connaître le nombre de slots
   server_queue *server_q = mmap(NULL, sizeof(server_queue), 
-    PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+      PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+  if (server_q == MAP_FAILED) {
+    if (close(shm_fd) < 0) {
+      return NULL;
+    }
+
+    return NULL;
+  }
+  size_t nb_slots = server_q->nb_slots;
+  if (munmap(server_q, sizeof(server_queue)) < 0) {
+    return NULL;
+  }
+  // Effectue la projection complète
+  server_q = mmap(NULL, sizeof(server_queue) + sizeof(shm_request) * nb_slots, 
+      PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
   if (server_q == MAP_FAILED) {
     if (close(shm_fd) < 0) {
       return NULL;
@@ -111,7 +129,8 @@ server_queue *connect(const char *shm_name) {
 
 int disconnect(server_queue *queue_p) {
   // Libère la projection mémoire
-  if (munmap(queue_p, sizeof(server_queue)) < 0) {
+  if (munmap(queue_p, 
+      sizeof(server_queue) + sizeof(shm_request) * queue_p->nb_slots) < 0) {
     return SHM_ERROR;
   }
 
@@ -128,7 +147,8 @@ int free_server_queue(server_queue *queue_p) {
     return SHM_ERROR;
   }
   // Libère la projection mémoire
-  if (munmap(queue_p, sizeof(server_queue)) < 0) {
+  if (munmap(queue_p, 
+      sizeof(server_queue) + sizeof(shm_request) * queue_p->nb_slots) < 0) {
     return SHM_ERROR;
   }
   // Supprime le fichier shm
@@ -339,8 +359,11 @@ int send_response(const char *id, const char *msg) {
   // Envoi la réponse
   ssize_t n;
   size_t total = 0;
+  if ((n = write(pipe_fd, res, sizeof(size_t))) < 0) {
+    return PIPE_ERROR;
+  }
   while (
-    (n = write(pipe_fd, res + total, sizeof(*res) + res->size - total)) > 0
+    (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
   ) {
     total += (size_t) n;
   }
