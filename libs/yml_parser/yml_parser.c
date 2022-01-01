@@ -116,6 +116,13 @@ static int hashmap_insert(yml_hash_map *hash_map, const char *key,
     void *value, size_t elem_size);
 
 /**
+ * Libère la table de hachage associée à map.
+ * 
+ * @param {yml_hash_map *} La table de hachage.
+ */
+static void free_hash_map(yml_hash_map *map);
+
+/**
  * L'une des fonctions de pré-hachage consillées par Kernighan et Pike pour 
  * les chaines de caractères.
  */
@@ -221,24 +228,6 @@ int get(yml_parser *parser, const char *key, void *buffer) {
   memcpy(buffer, elem->value, elem->size);
 
   return 1;
-}
-
-void free_hash_map(yml_hash_map *map) {
-  yml_hash_map_elem *elem;
-  yml_hash_map_elem *next;
-  for (size_t i = 0; i < MAP_SIZE; ++i) {
-    if (map->elems[i] != NULL) {
-      elem = map->elems[i];
-      do {
-        next = elem->next;
-        free(elem->key);
-        free(elem->value);
-        free(elem);
-        elem = next;
-      } while (next != NULL);
-    }
-  }
-  free(map);
 }
 
 int free_parser(yml_parser *parser) {
@@ -360,6 +349,24 @@ static int hashmap_insert(yml_hash_map *hash_map, const char *key,
   (*elem_list)->next = NULL;
 
   return 1;
+}
+
+static void free_hash_map(yml_hash_map *map) {
+  yml_hash_map_elem *elem;
+  yml_hash_map_elem *next;
+  for (size_t i = 0; i < MAP_SIZE; ++i) {
+    if (map->elems[i] != NULL) {
+      elem = map->elems[i];
+      do {
+        next = elem->next;
+        free(elem->key);
+        free(elem->value);
+        free(elem);
+        elem = next;
+      } while (next != NULL);
+    }
+  }
+  free(map);
 }
 
 static size_t str_hashfun(const char *s) {

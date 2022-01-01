@@ -1,6 +1,6 @@
 /**
  * Interface de contrôle d'un parser de fichier yaml (.yml ou .yaml).
- * Cette implémentation sera thread safe.
+ * Cette implémentation est thread safe.
  * 
  * @author Jordan ELIE.
  */
