@@ -5,7 +5,9 @@
 #include <string.h>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include "libs/connection/connection.h"
@@ -29,6 +31,11 @@ extern int errno;
 /*
  * Fonctions
  */
+
+/**
+ * Démarre un démon.
+ */
+int skeleton_dameon();
 
 /**
  * Fonction run du thread traitant la requête request.
@@ -77,8 +84,10 @@ server_queue *server_q;
 list *client_list = NULL;
 // Parseur de fichier yml pour la configuration du serveur
 yml_parser *config = NULL;
+// Indique si le serveur est un démon
+int daemon = 0;
 
-int main(void) {  
+int main(void) {
   // Création de la liste des clients où l'on stockera les pipes de réponse
   client_list = init_list((int (*)(void *, void *)) request_cmp);
   if (client_list == NULL) {
@@ -97,6 +106,10 @@ int main(void) {
     list_dispose(client_list);
     free_parser(config);
     return EXIT_FAILURE;
+  }
+  get(config, "daemon", &daemon);
+  if (daemon != 0) {
+    skeleton_dameon();
   }
   // Gestion des signaux
   struct sigaction action;
@@ -148,6 +161,42 @@ int main(void) {
   return EXIT_SUCCESS;
 }
 
+int skeleton_dameon() {
+  switch (fork()) {
+    case -1:
+      fprintf(stderr, "Impossible de créer le démon\n");
+      return -1;
+    case 0:
+      if (setsid() < 0) {
+        fprintf(stderr, "Impossible de créer le démon\n");
+        return -1;
+      }
+      switch (fork()) {
+        case -1:
+          fprintf(stderr, "Impossible de créer le démon\n");
+          return -1;
+        case 0:
+          umask(0);
+          for (int i = 0; i < sysconf(_SC_OPEN_MAX); ++i) {
+            close(i);
+          }
+          int my_stdout = open("/dev/null", O_RDWR);
+          int my_stderr = open("/dev/null", O_RDWR);
+          if (dup2(my_stdout, STDOUT_FILENO) < 0) {
+            return -1;
+          }
+          if (dup2(my_stderr, STDERR_FILENO) < 0) {
+            return -1;
+          }
+          return 1;
+        default:
+          exit(EXIT_SUCCESS);
+      }
+    default:
+      exit(EXIT_SUCCESS);
+  }
+}
+
 int allocate_request_ressources(shm_request *request) {
   // Ajoute la requête du client à la liste
   shm_request *r = list_add(client_list, request, sizeof(*request));
@@ -196,6 +245,8 @@ void *handle_request(void *request) {
             "commande\n", (ssize_t) res_max);
         goto remove;
       case 0:
+        fflush(stdout);
+        fflush(stderr);
         if (dup2(tube[1], STDOUT_FILENO) < 0) {
           perror("dup2 ");
           fprintf(stderr, "Impossible de relier la commande et la réponse\n");

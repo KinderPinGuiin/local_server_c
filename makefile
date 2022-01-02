@@ -9,8 +9,8 @@ LIBCONNECTION = $(LIBS)/connection/libconnection.so
 COMMANDS = $(LIBS)/commands/commands.o
 LIST = $(LIBS)/list/list.o
 YML = $(LIBS)/yml_parser/yml_parser.o
-objects_server = server.o $(LIBCONNECTION) $(COMMANDS) $(LIST) $(YML)
-objects_client = client.o $(LIBCONNECTION) $(COMMANDS)
+objects_server = server.o $(COMMANDS) $(LIST) $(YML) $(LIBCONNECTION)
+objects_client = client.o $(COMMANDS) $(LIBCONNECTION)
 executable_server = server
 executable_client = client
 
@@ -31,13 +31,9 @@ $(executable_client): $(objects_client)
 $(LIBCONNECTION): $(CONNECTION)
 	$(CC) $(CONNECTION) -shared -o $(LIBCONNECTION)
 	$(RM) $(CONNECTION)
-$(CONNECTION):
-	$(CC) $(LIBS)/connection/connection.c $(CFLAGS) -o $(CONNECTION)
-$(COMMANDS):
-	$(CC) $(LIBS)/commands/commands.c $(CFLAGS) -o $(COMMANDS)
-$(LIST):
-	$(CC) $(LIBS)/list/list.c $(CFLAGS) -o $(LIST)
-$(YML):
-	$(CC) $(LIBS)/yml_parser/yml_parser.c $(CFLAGS) -o $(YML)
+$(CONNECTION): $(LIBS)/connection/connection.c
+$(COMMANDS): $(LIBS)/commands/commands.c
+$(LIST): $(LIBS)/list/list.c
+$(YML): $(LIBS)/yml_parser/yml_parser.c
 server.o: server.c
 client.o: client.c
