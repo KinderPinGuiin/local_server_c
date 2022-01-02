@@ -31,7 +31,7 @@ request_fifo *req_fifo;
 response_fifo *res_fifo;
 server_queue *server_q;
 yml_parser *config;
-int timeout = 0;
+int res_timeout = 0;
 
 int main(int argc, char **argv) {
   if (argc >= NB_ARGS) {
@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
     free_parser(config);
     return EXIT_FAILURE;
   }
-  get(config, "timeout", &timeout);
+  get(config, "res_timeout", &res_timeout);
   // Gestion des signaux
   struct sigaction action;
   action.sa_handler = sig_disconnect;
@@ -119,7 +119,7 @@ int main(int argc, char **argv) {
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
       if (send_request(req_fifo, "exit") < 0 
-          || listen_response(res_fifo, &res_buffer, (time_t) timeout) <= 0) {
+          || listen_response(res_fifo, &res_buffer, (time_t) res_timeout) <= 0) {
         fprintf(stderr, "Impossible d'échanger une requête de fin de "
             "transmission avec le serveur\n");
       } else {
@@ -143,10 +143,9 @@ int main(int argc, char **argv) {
     if (send_request(req_fifo, s) < 0) {
       perror("Impossible d'envoyer la requête");
     }
-    sleep(6);
     // Ecoute la réponse du serveur
     int ret;
-    if ((ret = listen_response(res_fifo, &res_buffer, (time_t) timeout)) <= 0) {
+    if ((ret = listen_response(res_fifo, &res_buffer, (time_t) res_timeout)) <= 0) {
       if (ret < 0) {
         perror("Impossible de recevoir la réponse du serveur ");
       } else {
@@ -187,7 +186,7 @@ void sig_disconnect(int signum) {
     fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
     char *s;
     if (send_request(req_fifo, "exit") < 0 
-        || listen_response(res_fifo, &s, (time_t) timeout) <= 0) {
+        || listen_response(res_fifo, &s, (time_t) res_timeout) <= 0) {
       fprintf(stderr, "Impossible d'échanger une requête de fin de "
           "transmission avec le serveur");
       r = EXIT_FAILURE;
