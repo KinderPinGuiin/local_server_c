@@ -24,6 +24,14 @@ extern int errno;
 
 #define MIN(x, y) (x < y ? x : y)
 
+/**
+ * Quitte le processus courant avec le code 1 si signum vaut SIGALRM.
+ * Quitte avec le code SIG_ERROR sinon.
+ * 
+ * @param {int} Le signal.
+ */
+static void exit_sig(int signum);
+
 /*
  * Manipulation de la queue de connexion au serveur
  */
@@ -39,7 +47,6 @@ struct server_queue {
   size_t tail;   // Position de suppression dans le tampon
   shm_request buffer[];
 };
-
 
 server_queue *init_server_queue(size_t max_slot) {
   // Création du SHM
@@ -342,13 +349,6 @@ response_fifo *init_response_fifo(const char *id) {
   return res;
 }
 
-void exit_sig(int signum) {
-  if (signum == SIGALRM) {
-    exit(1);
-  }
-  exit(SIG_ERROR);
-}
-
 int send_response(const char *id, const char *msg, ssize_t max_size, 
     time_t timeout) {
   if (id == NULL || msg == NULL) {
@@ -502,4 +502,11 @@ int close_response_fifo(response_fifo *res) {
   free(res);
 
   return 1;
+}
+
+static void exit_sig(int signum) {
+  if (signum == SIGALRM) {
+    exit(1);
+  }
+  exit(SIG_ERROR);
 }
