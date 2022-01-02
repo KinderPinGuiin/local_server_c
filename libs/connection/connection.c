@@ -4,12 +4,14 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/select.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <semaphore.h>
 #include <limits.h>
 #include <string.h>
+#include <signal.h>
 #include "connection.h"
 
 extern int errno;
@@ -21,6 +23,14 @@ extern int errno;
 #endif
 
 #define MIN(x, y) (x < y ? x : y)
+
+/**
+ * Quitte le processus courant avec le code 1 si signum vaut SIGALRM.
+ * Quitte avec le code SIG_ERROR sinon.
+ * 
+ * @param {int} Le signal.
+ */
+static void exit_sig(int signum);
 
 /*
  * Manipulation de la queue de connexion au serveur
@@ -37,7 +47,6 @@ struct server_queue {
   size_t tail;   // Position de suppression dans le tampon
   shm_request buffer[];
 };
-
 
 server_queue *init_server_queue(size_t max_slot) {
   // Création du SHM
@@ -340,15 +349,12 @@ response_fifo *init_response_fifo(const char *id) {
   return res;
 }
 
-int send_response(const char *id, const char *msg, ssize_t max_size) {
+int send_response(const char *id, const char *msg, ssize_t max_size, 
+    time_t timeout) {
   if (id == NULL || msg == NULL) {
     return INVALID_POINTER;
   }
   // Ouvre le tube en écriture
-  int pipe_fd;
-  if ((pipe_fd = open(id, O_WRONLY)) < 0) {
-    return PIPE_ERROR;
-  }
   // Crée la réponse
   size_t size = strlen(msg) + 1;
   if (max_size >= 0) {
@@ -362,37 +368,88 @@ int send_response(const char *id, const char *msg, ssize_t max_size) {
   for (size_t i = 0; i < res->size; ++i) {
     res->msg[i] = msg[i];
   }
-  // Envoi la réponse
-  ssize_t n;
+  int pipe_fd = 0;
+  int r = 0;
+  ssize_t n = 0;
   size_t total = 0;
-  if ((n = write(pipe_fd, res, sizeof(size_t))) < 0) {
-    return PIPE_ERROR;
-  }
-  while (
-    (max_size < 0 || total < (size_t) max_size) &&
-    (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
-  ) {
-    total += (size_t) n;
-  }
-  free(res);
-  if (n < 0) {
-    return PIPE_ERROR;
-  }
-  if (close(pipe_fd) < 0) {
-    return PIPE_ERROR;
+  struct sigaction action;
+  switch (fork()) {
+    case -1:
+      return PROC_ERROR;
+    case 0:
+      // Mise en place d'une alarme
+      action.sa_handler = exit_sig;
+      action.sa_flags = 0;
+      if (sigfillset(&action.sa_mask) == -1) {
+        perror("Erreur lors de la création du masque des signaux bloqués ");
+        exit(SIG_ERROR);
+      }
+      // On associe l'action à différents signaux
+      if (sigaction(SIGINT, &action, NULL) == -1) {
+        perror("Erreur lors de l'association d'une action aux signaux ");
+        exit(SIG_ERROR);
+      }
+      if (sigaction(SIGQUIT, &action, NULL) == -1) {
+        perror("Erreur lors de l'association d'une action aux signaux ");
+        exit(SIG_ERROR);
+      }
+      alarm((unsigned int) timeout);
+      // Ouvre le tube en écriture
+      if ((pipe_fd = open(id, O_WRONLY)) < 0) {
+        exit(PIPE_ERROR);
+      }
+      // Envoi la réponse
+      if ((n = write(pipe_fd, res, sizeof(size_t))) < 0) {
+        free(res);
+        exit(PIPE_ERROR);
+      }
+      while (
+        (max_size < 0 || total < (size_t) max_size) &&
+        (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
+      ) {
+        total += (size_t) n;
+      }
+      if (n < 0) {
+        exit(PIPE_ERROR);
+      }
+      if (close(pipe_fd) < 0) {
+        exit(PIPE_ERROR);
+      }
+      exit(EXIT_SUCCESS);
+    default:
+      wait(&r);
+      free(res);
+      if (r < 0) {
+        return r;
+      } else if (r > 0) {
+        return 0;
+      }
   }
 
   return 1;
 }
 
-int listen_response(response_fifo *res_fifo, char **buffer) {
+int listen_response(response_fifo *res_fifo, char **buffer, time_t timeout) {
   if (res_fifo == NULL) {
     return INVALID_POINTER;
   }
   // Ouvre le tube de réponse
   int pipe_fd;
-  if ((pipe_fd = open(res_fifo->id, O_RDONLY)) < 0) {
+  if ((pipe_fd = open(res_fifo->id, O_RDONLY | O_NONBLOCK)) < 0) {
     return PIPE_ERROR;
+  }
+  // Attend que le serveur ait écrit
+  fd_set set;
+  struct timeval tv;
+  tv.tv_sec = timeout;
+  FD_ZERO(&set);
+  FD_SET(pipe_fd, &set);
+  int ret = select(pipe_fd + 1, &set, NULL, NULL, &tv);
+  if (ret < 0) {
+    fprintf(stderr, "Select error\n");
+    return PIPE_ERROR;
+  } else if (ret == 0) {
+    return 0;
   }
   // Lit la taille de la réponse
   size_t size;
@@ -408,6 +465,15 @@ int listen_response(response_fifo *res_fifo, char **buffer) {
   // Lit le contenu de la réponse
   size_t total = 0;
   while (total < size) {
+    FD_ZERO(&set);
+    FD_SET(pipe_fd, &set);
+    ret = select(pipe_fd + 1, &set, NULL, NULL, &tv);
+    if (ret < 0) {
+      fprintf(stderr, "Select error\n");
+      return PIPE_ERROR;
+    } else if (ret == 0) {
+      return 0;
+    }
     if ((n = read(pipe_fd, &res->msg[total], size - total)) < 0) {
       free(res);
       return PIPE_ERROR;
@@ -436,4 +502,11 @@ int close_response_fifo(response_fifo *res) {
   free(res);
 
   return 1;
+}
+
+static void exit_sig(int signum) {
+  if (signum == SIGALRM) {
+    exit(1);
+  }
+  exit(SIG_ERROR);
 }

@@ -3,8 +3,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <signal.h>
+#include <time.h>
 #include "libs/connection/connection.h"
 #include "libs/commands/commands.h"
+#include "libs/yml_parser/yml_parser.h"
 
 /**
  * Arguments possible du programme client.
@@ -28,6 +30,8 @@ void sig_disconnect(int signum);
 request_fifo *req_fifo;
 response_fifo *res_fifo;
 server_queue *server_q;
+yml_parser *config;
+int timeout = 0;
 
 int main(int argc, char **argv) {
   if (argc >= NB_ARGS) {
@@ -40,6 +44,17 @@ int main(int argc, char **argv) {
       return EXIT_SUCCESS;
     }
   }
+  // Charge la configuration
+  if ((config = init_yml_parser("./conf/client.yml", NULL)) == NULL) {
+    perror("Impossible de charger la configuration ");
+    return EXIT_FAILURE;
+  }
+  if (exec_parser(config) < 0) {
+    perror("Impossible de charger la configuration ");
+    free_parser(config);
+    return EXIT_FAILURE;
+  }
+  get(config, "timeout", &timeout);
   // Gestion des signaux
   struct sigaction action;
   action.sa_handler = sig_disconnect;
@@ -62,6 +77,10 @@ int main(int argc, char **argv) {
     return EXIT_FAILURE;
   }
   if (sigaction(SIGUSR1, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
+  if (sigaction(SIGUSR2, &action, NULL) == -1) {
     perror("Erreur lors de l'association d'une action aux signaux ");
     return EXIT_FAILURE;
   }
@@ -100,11 +119,11 @@ int main(int argc, char **argv) {
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
       if (send_request(req_fifo, "exit") < 0 
-          || listen_response(res_fifo, &res_buffer) < 0) {
+          || listen_response(res_fifo, &res_buffer, (time_t) timeout) <= 0) {
         fprintf(stderr, "Impossible d'échanger une requête de fin de "
             "transmission avec le serveur\n");
       } else {
-        fprintf(stdout, "%s\n", s);
+        fprintf(stdout, "%s\n", res_buffer);
       }
       r = EXIT_FAILURE;
       goto free;
@@ -124,9 +143,17 @@ int main(int argc, char **argv) {
     if (send_request(req_fifo, s) < 0) {
       perror("Impossible d'envoyer la requête");
     }
+    sleep(6);
     // Ecoute la réponse du serveur
-    if (listen_response(res_fifo, &res_buffer) < 0) {
-      perror("Impossible de recevoir la réponse du serveur ");
+    int ret;
+    if ((ret = listen_response(res_fifo, &res_buffer, (time_t) timeout)) <= 0) {
+      if (ret < 0) {
+        perror("Impossible de recevoir la réponse du serveur ");
+      } else {
+        fprintf(stdout, "Le serveur ne répond plus. Déconnexion...\n");
+      }
+      free(res_buffer);
+      break;
     } else {
       fprintf(stdout, "%s\n", res_buffer);
     }
@@ -146,6 +173,10 @@ free:
     perror("Impossible de fermer la pipe de réponse ");
     r = EXIT_FAILURE;
   }
+  if (free_parser(config) < 0) {
+    fprintf(stderr, "Impossible de free le parseur\n");
+    r = EXIT_FAILURE;
+  }
 
   return r;
 }
@@ -156,7 +187,7 @@ void sig_disconnect(int signum) {
     fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
     char *s;
     if (send_request(req_fifo, "exit") < 0 
-        || listen_response(res_fifo, &s) < 0) {
+        || listen_response(res_fifo, &s, (time_t) timeout) <= 0) {
       fprintf(stderr, "Impossible d'échanger une requête de fin de "
           "transmission avec le serveur");
       r = EXIT_FAILURE;
@@ -166,6 +197,9 @@ void sig_disconnect(int signum) {
   } else if (signum == SIGUSR1) {
     fprintf(stderr, 
         "\nInterruption subite du serveur, vous avez été déconnecté\n");
+  } else if (signum == SIGUSR2) {
+    fprintf(stderr, 
+        "Envoi de la réponse trop long : Vous avez été déconnecté.\n");
   }
   if (disconnect(server_q) < 0) {
     fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");
@@ -177,6 +211,10 @@ void sig_disconnect(int signum) {
   }
   if (close_response_fifo(res_fifo) < 0) {
     perror("Impossible de fermer la pipe de réponse ");
+    r = EXIT_FAILURE;
+  }
+  if (free_parser(config) < 0) {
+    fprintf(stderr, "Impossible de free le parseur\n");
     r = EXIT_FAILURE;
   }
 

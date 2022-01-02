@@ -86,6 +86,8 @@ list *client_list = NULL;
 yml_parser *config = NULL;
 // Indique si le serveur est un démon
 int daemon = 0;
+// Timeout de réponse du serveur
+int res_timeout = 0;
 
 int main(void) {
   // Création de la liste des clients où l'on stockera les pipes de réponse
@@ -107,6 +109,7 @@ int main(void) {
     free_parser(config);
     return EXIT_FAILURE;
   }
+  get(config, "res_timeout", &res_timeout);
   get(config, "daemon", &daemon);
   if (daemon != 0) {
     skeleton_dameon();
@@ -225,7 +228,7 @@ void *handle_request(void *request) {
   if (listen_request(req->request_pipe, req_buffer) < 0) {
     perror("Erreur lors de la lecture d'une requete ");
     send_response(req->response_pipe, "Erreur lors de la récéption de la "
-        "requête\n", (ssize_t) res_max);
+        "requête\n", (ssize_t) res_max, (time_t) res_timeout);
     goto remove;
   }
   int tube[2];
@@ -242,7 +245,7 @@ void *handle_request(void *request) {
       case -1:
         perror("fork ");
         send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-            "commande\n", (ssize_t) res_max);
+            "commande\n", (ssize_t) res_max, (time_t) res_timeout);
         goto remove;
       case 0:
         fflush(stdout);
@@ -270,7 +273,7 @@ void *handle_request(void *request) {
         if (close(tube[1]) < 0) {
           perror("close ");
           send_response(req->response_pipe, "Erreur lors de l'exécution "
-              "de la commande\n", (ssize_t) res_max);
+              "de la commande\n", (ssize_t) res_max, (time_t) res_timeout);
         }
         // Attend la mort du processus enfant
         wait(NULL);
@@ -279,33 +282,40 @@ void *handle_request(void *request) {
           res_buffer = realloc(res_buffer, total + PIPE_BUF + 1);
           if (res_buffer == NULL) {
             send_response(req->response_pipe, "Erreur lors de l'exécution "
-                "de la commande\n", (ssize_t) res_max);
+                "de la commande\n", (ssize_t) res_max, (time_t) res_timeout);
             goto remove;
           }
         } while ((n = read(tube[0], res_buffer + total, PIPE_BUF)) > 0);
         if (n == -1) {
           perror("read ");
           send_response(req->response_pipe, "Erreur lors de la liaison "
-              "entre la commande et la réponse\n", (ssize_t) res_max);
+              "entre la commande et la réponse\n", (ssize_t) res_max, (time_t) res_timeout);
         }
         res_buffer[total] = '\0';
         if (close(tube[0]) < 0) {
           perror("Impossible de fermer tube 0 : ");
           goto remove;
         }
-        if (send_response(req->response_pipe, res_buffer, (ssize_t) res_max) < 0) {
+        int r = send_response(req->response_pipe, res_buffer, (ssize_t) res_max,
+            (time_t) res_timeout);
+        if (r < 0) {
           perror("Impossible d'envoyer la réponse au client");
+          free(res_buffer);
+          goto remove;
+        } else if (r == 0) {
+          fprintf(stderr, "Un client a été timeout.\n");
+          kill(req->pid, SIGUSR2);
           goto remove;
         }
     }
     if (listen_request(req->request_pipe, req_buffer) < 0) {
       perror("Erreur lors de la lecture d'une requete ");
       send_response(req->response_pipe, "Erreur lors de la récéption de la "
-          "requête\n", (ssize_t) res_max);
+          "requête\n", (ssize_t) res_max, (time_t) res_timeout);
     }
     free(res_buffer);
   }
-  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", (ssize_t) res_max) < 0) {
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", (ssize_t) res_max, (time_t) res_timeout) < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
 remove:
@@ -327,7 +337,9 @@ int request_cmp(shm_request *a, shm_request *b) {
 void sig_free(int signum) {
   int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
-    fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
+    fprintf(stderr, "\nInterruption du serveur suite à un signal émis.\n");
+  } else if (signum == SIGPIPE) {
+    return;
   } else {
     fprintf(stderr, 
         "Interruption du serveur suite à un signal innatendu : %d\n", signum);

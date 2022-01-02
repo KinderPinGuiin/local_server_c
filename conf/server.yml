@@ -5,4 +5,7 @@ slots: 256
 response_limit: -1
 
 # Indique si le serveur est un démon (0 si non, une autre valeur si oui)
-daemon: 1
+daemon: 0
+
+# Timeout de réponse (En secondes)
+res_timeout: 5

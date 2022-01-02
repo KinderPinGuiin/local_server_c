@@ -10,7 +10,7 @@ COMMANDS = $(LIBS)/commands/commands.o
 LIST = $(LIBS)/list/list.o
 YML = $(LIBS)/yml_parser/yml_parser.o
 objects_server = server.o $(COMMANDS) $(LIST) $(YML) $(LIBCONNECTION)
-objects_client = client.o $(COMMANDS) $(LIBCONNECTION)
+objects_client = client.o $(COMMANDS) $(YML) $(LIBCONNECTION)
 executable_server = server
 executable_client = client
 
@@ -25,7 +25,7 @@ $(executable_server): $(objects_server)
 	$(RM) server.o
 
 $(executable_client): $(objects_client)
-	$(CC) $(objects_client) $(LDFLAGS) -o $(executable_client)
+	$(CC) -L$(LIBS)/connection $(objects_client) $(LDFLAGS) -lconnection -o $(executable_client)
 	$(RM) client.o
 
 $(LIBCONNECTION): $(CONNECTION)
