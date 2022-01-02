@@ -1,1 +1,5 @@
+# Taille de la file des requêtes du serveur
 slots: 256
+
+# Taille maximale d'une réponse (-1 si pas de limite)
+response_limit: -1

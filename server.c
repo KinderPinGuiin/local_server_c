@@ -168,12 +168,15 @@ int allocate_request_ressources(shm_request *request) {
 
 void *handle_request(void *request) {
   shm_request *req = (shm_request *) request;
+  // Récupère la taille maximale des requêtes dans la configuration
+  int res_max = -1;
+  get(config, "response_limit", &res_max);
   // Ecoute la requête
   char req_buffer[MAX_COMMAND_LENGTH + 1];
   if (listen_request(req->request_pipe, req_buffer) < 0) {
     perror("Erreur lors de la lecture d'une requete ");
     send_response(req->response_pipe, "Erreur lors de la récéption de la "
-        "requête\n", -1);
+        "requête\n", (ssize_t) res_max);
     goto remove;
   }
   int tube[2];
@@ -190,7 +193,7 @@ void *handle_request(void *request) {
       case -1:
         perror("fork ");
         send_response(req->response_pipe, "Erreur lors de l'exécution de la "
-            "commande\n", -1);
+            "commande\n", (ssize_t) res_max);
         goto remove;
       case 0:
         if (dup2(tube[1], STDOUT_FILENO) < 0) {
@@ -216,7 +219,7 @@ void *handle_request(void *request) {
         if (close(tube[1]) < 0) {
           perror("close ");
           send_response(req->response_pipe, "Erreur lors de l'exécution "
-              "de la commande\n", -1);
+              "de la commande\n", (ssize_t) res_max);
         }
         // Attend la mort du processus enfant
         wait(NULL);
@@ -225,21 +228,21 @@ void *handle_request(void *request) {
           res_buffer = realloc(res_buffer, total + PIPE_BUF + 1);
           if (res_buffer == NULL) {
             send_response(req->response_pipe, "Erreur lors de l'exécution "
-                "de la commande\n", -1);
+                "de la commande\n", (ssize_t) res_max);
             goto remove;
           }
         } while ((n = read(tube[0], res_buffer + total, PIPE_BUF)) > 0);
         if (n == -1) {
           perror("read ");
           send_response(req->response_pipe, "Erreur lors de la liaison "
-              "entre la commande et la réponse\n", -1);
+              "entre la commande et la réponse\n", (ssize_t) res_max);
         }
         res_buffer[total] = '\0';
         if (close(tube[0]) < 0) {
           perror("Impossible de fermer tube 0 : ");
           goto remove;
         }
-        if (send_response(req->response_pipe, res_buffer, -1) < 0) {
+        if (send_response(req->response_pipe, res_buffer, (ssize_t) res_max) < 0) {
           perror("Impossible d'envoyer la réponse au client");
           goto remove;
         }
@@ -247,11 +250,11 @@ void *handle_request(void *request) {
     if (listen_request(req->request_pipe, req_buffer) < 0) {
       perror("Erreur lors de la lecture d'une requete ");
       send_response(req->response_pipe, "Erreur lors de la récéption de la "
-          "requête\n", -1);
+          "requête\n", (ssize_t) res_max);
     }
     free(res_buffer);
   }
-  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", -1) < 0) {
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", (ssize_t) res_max) < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
 remove:
