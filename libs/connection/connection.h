@@ -194,10 +194,11 @@ int send_response(const char *id, const char *msg, ssize_t max_size);
  * 
  * @param {char *} L'identifiant unique de la requête à écouter.
  * @param {char *} Une chaîne où stocker la commande à exécuter.
+ * @param {time_t} Un timeout en cas de non réponse.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int listen_response(response_fifo *res_fifo, char **buffer);
+int listen_response(response_fifo *res_fifo, char **buffer, time_t timeout);
 
 /**
  * Ferme la file de réponse associée à *req. Renvoie 1 en cas de succès

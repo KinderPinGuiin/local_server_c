@@ -1,0 +1,2 @@
+# Le temps d'attente maximum (En secondes) d'une réponse
+timeout: 5

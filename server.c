@@ -295,6 +295,7 @@ void *handle_request(void *request) {
         }
         if (send_response(req->response_pipe, res_buffer, (ssize_t) res_max) < 0) {
           perror("Impossible d'envoyer la réponse au client");
+          free(res_buffer);
           goto remove;
         }
     }
@@ -328,6 +329,8 @@ void sig_free(int signum) {
   int status = EXIT_SUCCESS;
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stderr, "\nInterruption du serveur suite à un signal émit.\n");
+  } else if (signum == SIGPIPE) {
+    return;
   } else {
     fprintf(stderr, 
         "Interruption du serveur suite à un signal innatendu : %d\n", signum);
