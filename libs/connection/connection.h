@@ -187,7 +187,7 @@ response_fifo *init_response_fifo(const char *id);
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int send_response(const char *id, const char *msg);
+int send_response(const char *id, const char *msg, ssize_t max_size);
 
 /**
  * Ecoute la réponse envoyée par le serveur et stock son contenu dans buffer.
