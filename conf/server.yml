@@ -2,4 +2,7 @@
 slots: 256
 
 # Taille maximale d'une réponse (-1 si pas de limite)
-response_limit: -1
+response_limit: 4000
+
+# Indique si le serveur est un démon (0 si non, une autre valeur sinon)
+daemon: 1

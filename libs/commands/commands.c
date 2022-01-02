@@ -85,7 +85,7 @@ void print_commands() {
     "    - \033[0;36mmkdir ... \033[0m : Toutes les variantes de mkdir.\n"
     "    - \033[0;36mtouch ... \033[0m : Toutes les variantes de touch.\n"
     "    - \033[0;36mexit\033[0m : Permet de se déconnecter du "
-      "serveur.\n"
+      "serveur.\n\n"
     "Liste des commandes personnalisées disponibles :\n"
     "    - \033[0;36minfo <PID>\033[0m : Affiche sur la sortie standard les "
       "informations concernant le processus de numéro PID.\n"
