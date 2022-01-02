@@ -25,7 +25,7 @@ $(executable_server): $(objects_server)
 	$(RM) server.o
 
 $(executable_client): $(objects_client)
-	$(CC) $(objects_client) $(LDFLAGS) -o $(executable_client)
+	$(CC) -L$(LIBS)/connection $(objects_client) $(LDFLAGS) -lconnection -o $(executable_client)
 	$(RM) client.o
 
 $(LIBCONNECTION): $(CONNECTION)

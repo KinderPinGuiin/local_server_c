@@ -80,6 +80,10 @@ int main(int argc, char **argv) {
     perror("Erreur lors de l'association d'une action aux signaux ");
     return EXIT_FAILURE;
   }
+  if (sigaction(SIGUSR2, &action, NULL) == -1) {
+    perror("Erreur lors de l'association d'une action aux signaux ");
+    return EXIT_FAILURE;
+  }
   // Connexion à la file de requêtes
   server_q = connect(SHM_NAME);
   if (server_q == NULL) {
@@ -139,6 +143,7 @@ int main(int argc, char **argv) {
     if (send_request(req_fifo, s) < 0) {
       perror("Impossible d'envoyer la requête");
     }
+    sleep(6);
     // Ecoute la réponse du serveur
     int ret;
     if ((ret = listen_response(res_fifo, &res_buffer, (time_t) timeout)) <= 0) {
@@ -192,6 +197,9 @@ void sig_disconnect(int signum) {
   } else if (signum == SIGUSR1) {
     fprintf(stderr, 
         "\nInterruption subite du serveur, vous avez été déconnecté\n");
+  } else if (signum == SIGUSR2) {
+    fprintf(stderr, 
+        "Envoi de la réponse trop long : Vous avez été déconnecté.\n");
   }
   if (disconnect(server_q) < 0) {
     fprintf(stderr, "Une erreur est survenue lors de la déconnexion\n");

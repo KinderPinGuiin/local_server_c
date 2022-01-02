@@ -31,6 +31,8 @@
 #define SERVER_IS_FULL -4
 #define PIPE_ERROR -5
 #define MEMORY_ERROR -6
+#define PROC_ERROR -7
+#define SIG_ERROR -8
 
 /*
  * Manipulation de la queue de connexion au serveur
@@ -184,10 +186,14 @@ response_fifo *init_response_fifo(const char *id);
  * 
  * @param {char *} L'identifiant unique de la réponse.
  * @param {char *} Le message à envoyer.
+ * @param {ssize_t} La taille maximale de la réponse.
+ * @param {time_t} Un timeout de réponse.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
+ *               0 si le timeout a été atteint.
  */
-int send_response(const char *id, const char *msg, ssize_t max_size);
+int send_response(const char *id, const char *msg, ssize_t max_size, 
+    time_t timeout);
 
 /**
  * Ecoute la réponse envoyée par le serveur et stock son contenu dans buffer.
@@ -196,7 +202,8 @@ int send_response(const char *id, const char *msg, ssize_t max_size);
  * @param {char *} Une chaîne où stocker la commande à exécuter.
  * @param {time_t} Un timeout en cas de non réponse.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
- *               Cette erreur pourra être récupérée via perror.
+ *               Cette erreur pourra être récupérée via perror. 0 si le timeout
+ *               a été atteint.
  */
 int listen_response(response_fifo *res_fifo, char **buffer, time_t timeout);
 

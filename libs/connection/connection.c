@@ -11,6 +11,7 @@
 #include <semaphore.h>
 #include <limits.h>
 #include <string.h>
+#include <signal.h>
 #include "connection.h"
 
 extern int errno;
@@ -341,15 +342,19 @@ response_fifo *init_response_fifo(const char *id) {
   return res;
 }
 
-int send_response(const char *id, const char *msg, ssize_t max_size) {
+void exit_sig(int signum) {
+  if (signum == SIGALRM) {
+    exit(1);
+  }
+  exit(SIG_ERROR);
+}
+
+int send_response(const char *id, const char *msg, ssize_t max_size, 
+    time_t timeout) {
   if (id == NULL || msg == NULL) {
     return INVALID_POINTER;
   }
   // Ouvre le tube en écriture
-  int pipe_fd;
-  if ((pipe_fd = open(id, O_WRONLY)) < 0) {
-    return PIPE_ERROR;
-  }
   // Crée la réponse
   size_t size = strlen(msg) + 1;
   if (max_size >= 0) {
@@ -363,26 +368,62 @@ int send_response(const char *id, const char *msg, ssize_t max_size) {
   for (size_t i = 0; i < res->size; ++i) {
     res->msg[i] = msg[i];
   }
-  // Envoi la réponse
-  ssize_t n;
+  int pipe_fd = 0;
+  int r = 0;
+  ssize_t n = 0;
   size_t total = 0;
-  if ((n = write(pipe_fd, res, sizeof(size_t))) < 0) {
-    free(res);
-    return PIPE_ERROR;
-  }
-  sleep(6);
-  while (
-    (max_size < 0 || total < (size_t) max_size) &&
-    (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
-  ) {
-    total += (size_t) n;
-  }
-  free(res);
-  if (n < 0) {
-    return PIPE_ERROR;
-  }
-  if (close(pipe_fd) < 0) {
-    return PIPE_ERROR;
+  struct sigaction action;
+  switch (fork()) {
+    case -1:
+      return PROC_ERROR;
+    case 0:
+      // Mise en place d'une alarme
+      action.sa_handler = exit_sig;
+      action.sa_flags = 0;
+      if (sigfillset(&action.sa_mask) == -1) {
+        perror("Erreur lors de la création du masque des signaux bloqués ");
+        exit(SIG_ERROR);
+      }
+      // On associe l'action à différents signaux
+      if (sigaction(SIGINT, &action, NULL) == -1) {
+        perror("Erreur lors de l'association d'une action aux signaux ");
+        exit(SIG_ERROR);
+      }
+      if (sigaction(SIGQUIT, &action, NULL) == -1) {
+        perror("Erreur lors de l'association d'une action aux signaux ");
+        exit(SIG_ERROR);
+      }
+      alarm((unsigned int) timeout);
+      // Ouvre le tube en écriture
+      if ((pipe_fd = open(id, O_WRONLY)) < 0) {
+        exit(PIPE_ERROR);
+      }
+      // Envoi la réponse
+      if ((n = write(pipe_fd, res, sizeof(size_t))) < 0) {
+        free(res);
+        exit(PIPE_ERROR);
+      }
+      while (
+        (max_size < 0 || total < (size_t) max_size) &&
+        (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
+      ) {
+        total += (size_t) n;
+      }
+      if (n < 0) {
+        exit(PIPE_ERROR);
+      }
+      if (close(pipe_fd) < 0) {
+        exit(PIPE_ERROR);
+      }
+      exit(EXIT_SUCCESS);
+    default:
+      wait(&r);
+      free(res);
+      if (r < 0) {
+        return r;
+      } else if (r > 0) {
+        return 0;
+      }
   }
 
   return 1;
