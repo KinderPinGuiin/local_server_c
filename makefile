@@ -22,9 +22,11 @@ clean:
 
 $(executable_server): $(objects_server)
 	$(CC) -L$(LIBS)/connection $(objects_server) $(LDFLAGS) -lconnection -o $(executable_server)
+	$(RM) server.o
 
 $(executable_client): $(objects_client)
 	$(CC) $(objects_client) $(LDFLAGS) -o $(executable_client)
+	$(RM) client.o
 
 $(LIBCONNECTION): $(CONNECTION)
 	$(CC) $(CONNECTION) -shared -o $(LIBCONNECTION)

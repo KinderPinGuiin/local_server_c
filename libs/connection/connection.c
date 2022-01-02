@@ -20,6 +20,8 @@ extern int errno;
 
 #endif
 
+#define MIN(x, y) (x < y ? x : y)
+
 /*
  * Manipulation de la queue de connexion au serveur
  */
@@ -338,7 +340,7 @@ response_fifo *init_response_fifo(const char *id) {
   return res;
 }
 
-int send_response(const char *id, const char *msg) {
+int send_response(const char *id, const char *msg, ssize_t max_size) {
   if (id == NULL || msg == NULL) {
     return INVALID_POINTER;
   }
@@ -348,11 +350,15 @@ int send_response(const char *id, const char *msg) {
     return PIPE_ERROR;
   }
   // Crée la réponse
-  response *res = malloc(sizeof(*res) + strlen(msg) + 1);
+  size_t size = strlen(msg) + 1;
+  if (max_size >= 0) {
+    size = MIN(size, (size_t) max_size);
+  }
+  response *res = malloc(sizeof(*res) + size);
   if (res == NULL) {
     return MEMORY_ERROR;
   }
-  res->size = strlen(msg) + 1;
+  res->size = size;
   for (size_t i = 0; i < res->size; ++i) {
     res->msg[i] = msg[i];
   }
@@ -363,6 +369,7 @@ int send_response(const char *id, const char *msg) {
     return PIPE_ERROR;
   }
   while (
+    (max_size < 0 || total < (size_t) max_size) &&
     (n = write(pipe_fd, &res->msg[total], res->size - total)) > 0
   ) {
     total += (size_t) n;
