@@ -303,8 +303,10 @@ void *handle_request(void *request) {
           free(res_buffer);
           goto remove;
         } else if (r == 0) {
-          fprintf(stderr, "Un client a été timeout.\n");
-          kill(req->pid, SIGUSR2);
+          fprintf(stderr, "Un client a été timeout\n");
+          if (kill(req->pid, SIGUSR2) < 0) {
+            fprintf(stderr, "Impossible d'envoyer un signal au client\n");
+          }
           goto remove;
         }
     }

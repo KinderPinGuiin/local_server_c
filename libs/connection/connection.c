@@ -385,11 +385,7 @@ int send_response(const char *id, const char *msg, ssize_t max_size,
         exit(SIG_ERROR);
       }
       // On associe l'action à différents signaux
-      if (sigaction(SIGINT, &action, NULL) == -1) {
-        perror("Erreur lors de l'association d'une action aux signaux ");
-        exit(SIG_ERROR);
-      }
-      if (sigaction(SIGQUIT, &action, NULL) == -1) {
+      if (sigaction(SIGALRM, &action, NULL) == -1) {
         perror("Erreur lors de l'association d'une action aux signaux ");
         exit(SIG_ERROR);
       }
