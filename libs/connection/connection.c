@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200801L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,6 +10,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
 #include <semaphore.h>
 #include <limits.h>
 #include <string.h>
@@ -175,15 +178,26 @@ int free_server_queue(server_queue *queue_p) {
  */
 
 int send_shm_request(server_queue *server_q, const char request_pipe_name[], 
-    const char response_pipe_name[]) {
+    const char response_pipe_name[], time_t timeout) {
   if (server_q == NULL) {
     return INVALID_POINTER;
   }
+  struct timespec ts;
+  if (clock_gettime(CLOCK_REALTIME, &ts) < 0) {
+    return SHM_ERROR;
+  }
+  ts.tv_sec += timeout;
   // Attend au cas où la file soit en train d'être modifiée.
-  if (sem_wait(&server_q->empty) == -1) {
+  if (sem_timedwait(&server_q->empty, &ts) == -1) {
+    if (errno == ETIMEDOUT) {
+      return 0;
+    }
     return SEMAPHORE_ERROR;
   }
-  if (sem_wait(&server_q->mutex) == -1) {
+  if (sem_timedwait(&server_q->mutex, &ts) == -1) {
+    if (errno == ETIMEDOUT) {
+      return 0;
+    }
     return SEMAPHORE_ERROR;
   }
   // Créé la requête à la volée

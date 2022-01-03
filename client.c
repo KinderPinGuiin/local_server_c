@@ -107,8 +107,14 @@ int main(int argc, char **argv) {
   }
   // Envoie de la requête de connexion au serveur
   int r = EXIT_SUCCESS;
-  if (send_shm_request(server_q, request_pipe, response_pipe) < 0) {
-    perror("Impossible d'envoyer une requête à la file de connexion ");
+  int ret;
+  if ((ret = send_shm_request(server_q, request_pipe, response_pipe, res_timeout)) <= 0) {
+    if (ret == 0) {
+      fprintf(stderr, 
+        "Le serveur est surchargé, veuillez réessayer plus tard\n");
+    } else {
+      perror("Impossible d'envoyer une requête à la file de connexion ");
+    }
     r = EXIT_FAILURE;
     goto free;
   }
@@ -144,7 +150,6 @@ int main(int argc, char **argv) {
       perror("Impossible d'envoyer la requête");
     }
     // Ecoute la réponse du serveur
-    int ret;
     if ((ret = listen_response(res_fifo, &res_buffer, (time_t) res_timeout)) <= 0) {
       if (ret < 0) {
         perror("Impossible de recevoir la réponse du serveur ");

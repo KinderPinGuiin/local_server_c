@@ -96,13 +96,16 @@ typedef struct shm_request {
  * contiendra les noms des pipes sur lesquels doit s'effectuer la 
  * requête / réponse.
  * 
+ * @param {server_queue *} La file de requêtes.
  * @param {char[]} Le nom du tube de requête.
  * @param {char[]} Le nom du tube de réponse.
+ * @param {time_t} Un timeout.
  * @return {int} 1 si tout se passe bien et une valeur négative sinon.
- *               Cette erreur peut-être récupérée via perror.
+ *               Cette erreur peut-être récupérée via perror. Retourne 0
+ *               si le timeout a atteint 0.
  */
 int send_shm_request(server_queue *server_q, const char request_pipe_name[], 
-    const char response_pipe_name[]);
+    const char response_pipe_name[], time_t timeout);
 
 /**
  * Récupère la requête la plus ancienne de la file des requêtes et execute la
