@@ -31,7 +31,8 @@ request_fifo *req_fifo;
 response_fifo *res_fifo;
 server_queue *server_q;
 yml_parser *config;
-int res_timeout = 0;
+int req_timeout = 5;
+int res_timeout = 5;
 
 int main(int argc, char **argv) {
   if (argc >= NB_ARGS) {
@@ -54,6 +55,7 @@ int main(int argc, char **argv) {
     free_parser(config);
     return EXIT_FAILURE;
   }
+  get(config, "req_timeout", &req_timeout);
   get(config, "res_timeout", &res_timeout);
   // Gestion des signaux
   struct sigaction action;
@@ -124,7 +126,7 @@ int main(int argc, char **argv) {
     fprintf(stdout, "> ");
     if (fgets(s, MAX_COMMAND_LENGTH, stdin) == NULL) {
       fprintf(stderr, "Erreur lors de la lecture de la commande\n");
-      if (send_request(req_fifo, "exit") < 0 
+      if (send_request(req_fifo, "exit", (time_t) req_timeout) <= 0 
           || listen_response(res_fifo, &res_buffer, (time_t) res_timeout) <= 0) {
         fprintf(stderr, "Impossible d'échanger une requête de fin de "
             "transmission avec le serveur\n");
@@ -146,8 +148,19 @@ int main(int argc, char **argv) {
       continue;
     }
     // Une fois connecté envoie la requête à exécuter
-    if (send_request(req_fifo, s) < 0) {
-      perror("Impossible d'envoyer la requête");
+    if ((ret = send_request(req_fifo, s, (time_t) req_timeout)) <= 0) {
+      if (ret == 0) {
+        fprintf(stderr, 
+          "Le serveur est trop surchargé pour recevoir la requête, vous avez "
+          "été déconnecté...\n");
+          if (res_buffer != NULL) {
+            free(res_buffer);
+          }
+      } else {
+        perror("Impossible d'envoyer la requête");
+      }
+      r = EXIT_FAILURE;
+      goto free;
     }
     // Ecoute la réponse du serveur
     if ((ret = listen_response(res_fifo, &res_buffer, (time_t) res_timeout)) <= 0) {
@@ -156,12 +169,16 @@ int main(int argc, char **argv) {
       } else {
         fprintf(stdout, "Le serveur ne répond plus. Déconnexion...\n");
       }
-      free(res_buffer);
+      if (res_buffer != NULL) {
+        free(res_buffer);
+      }
       break;
     } else {
       fprintf(stdout, "%s\n", res_buffer);
     }
-    free(res_buffer);
+    if (res_buffer != NULL) {
+      free(res_buffer);
+    }
   } while (strcmp(s, "exit") != 0);
   // Libère les ressources en se déconnectant
 free:
@@ -190,7 +207,7 @@ void sig_disconnect(int signum) {
   if (signum == SIGINT || signum == SIGQUIT || signum == SIGTERM) {
     fprintf(stdout, "\nInterruption de la connexion au serveur (Signal)...\n");
     char *s;
-    if (send_request(req_fifo, "exit") < 0 
+    if (send_request(req_fifo, "exit", (time_t) req_timeout) <= 0 
         || listen_response(res_fifo, &s, (time_t) res_timeout) <= 0) {
       fprintf(stderr, "Impossible d'échanger une requête de fin de "
           "transmission avec le serveur");

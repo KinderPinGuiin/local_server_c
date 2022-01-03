@@ -278,25 +278,54 @@ request_fifo *init_request_fifo(const char *id) {
   return req;
 }
 
-int send_request(request_fifo *req_fifo, const char *cmd) {
+int send_request(request_fifo *req_fifo, const char *cmd, time_t timeout) {
   if (req_fifo == NULL || cmd == NULL) {
     return INVALID_POINTER;
   }
   // Créé la requête
   request req = { .cmd = "" };
   strncpy(req.cmd, cmd, MAX_COMMAND_LENGTH);
-  // Ouvre le tube du réseau
-  int pipe_fd;
-  if ((pipe_fd = open(req_fifo->id, O_WRONLY)) < 0) {
-    return PIPE_ERROR;
-  }
-  // Envoie la requête
-  if (write(pipe_fd, &req, sizeof(request)) < 0) {
-    return PIPE_ERROR;
-  }
-  // Ferme le tube
-  if (close(pipe_fd) < 0) {
-    return PIPE_ERROR;
+  // Gestion du timeout
+  int pipe_fd = 0;
+  int r = 0;
+  struct sigaction action;
+  switch (fork()) {
+    case -1:
+      return PROC_ERROR;
+    case 0:
+      // Mise en place d'une alarme
+      action.sa_handler = exit_sig;
+      action.sa_flags = 0;
+      if (sigfillset(&action.sa_mask) == -1) {
+        perror("Erreur lors de la création du masque des signaux bloqués ");
+        exit(SIG_ERROR);
+      }
+      // On associe l'action au signal d'alarme
+      if (sigaction(SIGALRM, &action, NULL) == -1) {
+        perror("Erreur lors de l'association d'une action aux signaux ");
+        exit(SIG_ERROR);
+      }
+      alarm((unsigned int) timeout);
+      // Ouvre le tube du réseau
+      if ((pipe_fd = open(req_fifo->id, O_WRONLY)) < 0) {
+        return PIPE_ERROR;
+      }
+      // Envoie la requête
+      if (write(pipe_fd, &req, sizeof(request)) < 0) {
+        return PIPE_ERROR;
+      }
+      // Ferme le tube
+      if (close(pipe_fd) < 0) {
+        return PIPE_ERROR;
+      }
+      exit(EXIT_SUCCESS);
+    default:
+      wait(&r);
+      if (r < 0) {
+        return r;
+      } else if (r > 0) {
+        return 0;
+      }
   }
 
   return 1;
@@ -368,7 +397,6 @@ int send_response(const char *id, const char *msg, ssize_t max_size,
   if (id == NULL || msg == NULL) {
     return INVALID_POINTER;
   }
-  // Ouvre le tube en écriture
   // Crée la réponse
   size_t size = strlen(msg) + 1;
   if (max_size >= 0) {
@@ -387,6 +415,7 @@ int send_response(const char *id, const char *msg, ssize_t max_size,
   ssize_t n = 0;
   size_t total = 0;
   struct sigaction action;
+  // Gestion du timeout
   switch (fork()) {
     case -1:
       return PROC_ERROR;
@@ -398,7 +427,7 @@ int send_response(const char *id, const char *msg, ssize_t max_size,
         perror("Erreur lors de la création du masque des signaux bloqués ");
         exit(SIG_ERROR);
       }
-      // On associe l'action à différents signaux
+      // On associe l'action au signal d'alarme
       if (sigaction(SIGALRM, &action, NULL) == -1) {
         perror("Erreur lors de l'association d'une action aux signaux ");
         exit(SIG_ERROR);

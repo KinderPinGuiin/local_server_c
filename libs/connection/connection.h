@@ -141,10 +141,11 @@ request_fifo *init_request_fifo(const char *id);
  * 
  * @param {request_fifo *} Le réseau de requête.
  * @param {char *} La commande que doit éxecuter le serveur.
+ * @param {time_t} Un timeout.
  * @return {int} 1 en cas de succès et une valeur négative en cas d'erreur.
  *               Cette erreur pourra être récupérée via perror.
  */
-int send_request(request_fifo *req_fifo, const char *cmd);
+int send_request(request_fifo *req_fifo, const char *cmd, time_t timeout);
 
 /**
  * Ecoute la requête envoyée par le client et stock la commande à exécuter dans

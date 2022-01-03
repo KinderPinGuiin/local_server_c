@@ -1,2 +1,5 @@
+# Le temps d'attente maximum (En secondes) d'envoi d'une requête
+req_timeout: 5
+
 # Le temps d'attente maximum (En secondes) d'une réponse
 res_timeout: 5

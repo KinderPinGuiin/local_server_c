@@ -87,7 +87,7 @@ yml_parser *config = NULL;
 // Indique si le serveur est un démon
 int daemon = 0;
 // Timeout de réponse du serveur
-int res_timeout = 0;
+int res_timeout = 5;
 
 int main(void) {
   // Création de la liste des clients où l'on stockera les pipes de réponse
@@ -289,7 +289,8 @@ void *handle_request(void *request) {
         if (n == -1) {
           perror("read ");
           send_response(req->response_pipe, "Erreur lors de la liaison "
-              "entre la commande et la réponse\n", (ssize_t) res_max, (time_t) res_timeout);
+              "entre la commande et la réponse\n", (ssize_t) res_max, 
+              (time_t) res_timeout);
         }
         res_buffer[total] = '\0';
         if (close(tube[0]) < 0) {
@@ -317,7 +318,8 @@ void *handle_request(void *request) {
     }
     free(res_buffer);
   }
-  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", (ssize_t) res_max, (time_t) res_timeout) < 0) {
+  if (send_response(req->response_pipe, "Déconnexion du serveur...\n", 
+      (ssize_t) res_max, (time_t) res_timeout) < 0) {
     perror("Impossible d'envoyer la réponse au client ");
   }
 remove:
